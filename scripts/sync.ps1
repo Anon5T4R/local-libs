@@ -5,14 +5,20 @@
 # Requer: PowerShell 5.1+, git nos repos. Rodar na raiz do repo local-libs.
 param(
   [ValidateSet('verify', 'push')] [string]$Mode = 'verify',
-  [string[]]$Apps = @('local-image', 'local-keys', 'local-office', 'local-paint', 'local-pdf',
-                      'local-player-rs', 'local-sheets', 'local-slides', 'local-utils', 'local-vector')
+  # Default: todos os apps que tiverem libs/craft-libs/crates/update
+  [string[]]$Apps = @()
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $root 'crates\update'
 $appsRoot = 'C:\Dev\underworld-apps'   # no Arch: ~/Dev/dev-arch/underworld-apps
+
+if ($Apps.Count -eq 0) {
+  $Apps = Get-ChildItem $appsRoot -Directory |
+    Where-Object { Test-Path (Join-Path $_.FullName 'libs\craft-libs\crates\update') } |
+    ForEach-Object { $_.Name }
+}
 
 function Get-DirHash([string]$dir) {
   $files = Get-ChildItem $dir -Recurse -File | Sort-Object FullName
