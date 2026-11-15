@@ -54,7 +54,9 @@ pub fn update_scope(
     if !is_msi {
         return Ok(None);
     }
-    let code = product_code.filter(|code| valid_product_code(code)).ok_or(UNKNOWN_CONTEXT)?;
+    let code = product_code
+        .filter(|code| valid_product_code(code))
+        .ok_or(UNKNOWN_CONTEXT)?;
     match probe(code) {
         Ok(scope) => Ok(Some(scope)),
         Err(ProbeError::Conflicting) => Err(CONFLICTING_CONTEXT.into()),
@@ -101,7 +103,11 @@ pub fn valid_product_code(code: &str) -> bool {
 /// an account (managed or not), 4 the machine. Anything else is unclear, and two contexts conflict.
 fn parse_contexts(output: &str) -> Result<MsiScope, ProbeError> {
     let mut scope = None;
-    for line in output.lines().map(str::trim).filter(|line| !line.is_empty()) {
+    for line in output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
         let context = match line {
             "1" | "2" => MsiScope::PerUser,
             "4" => MsiScope::PerMachine,
@@ -128,14 +134,24 @@ pub fn probe(product_code: &str) -> Result<MsiScope, ProbeError> {
     let root = std::env::var_os("SystemRoot")
         .map(PathBuf::from)
         .filter(|root| root.is_absolute())
-        .ok_or_else(|| ProbeError::Unavailable("SystemRoot is not set to an absolute path".into()))?;
+        .ok_or_else(|| {
+            ProbeError::Unavailable("SystemRoot is not set to an absolute path".into())
+        })?;
     let powershell = root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
     // Only a validated GUID is interpolated. ProductsEx reads registration for the current
     // account and the machine, never another account and never Win32_Product (which repairs).
-    let script = format!("$code='{product_code}';\n{}", include_str!("msi_context.ps1"));
+    let script = format!(
+        "$code='{product_code}';\n{}",
+        include_str!("msi_context.ps1")
+    );
     let mut command = crate::process::command(powershell);
     command.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
-    let output = crate::process::run_command(command, "Windows installation lookup", Duration::from_secs(10)).map_err(ProbeError::Unavailable)?;
+    let output = crate::process::run_command(
+        command,
+        "Windows installation lookup",
+        Duration::from_secs(10),
+    )
+    .map_err(ProbeError::Unavailable)?;
     parse_contexts(&output)
 }
 
@@ -168,13 +184,19 @@ mod tests {
 
     #[test]
     fn a_fresh_install_is_not_looked_up() {
-        assert_eq!(update_scope(false, None, |_| Err(ProbeError::Unknown), |_| None), Ok(None));
+        assert_eq!(
+            update_scope(false, None, |_| Err(ProbeError::Unknown), |_| None),
+            Ok(None)
+        );
     }
 
     #[test]
     fn known_updates_keep_the_authoritative_context() {
         for scope in [MsiScope::PerUser, MsiScope::PerMachine] {
-            assert_eq!(update_scope(true, Some(CODE), |_| Ok(scope), |_| None), Ok(Some(scope)));
+            assert_eq!(
+                update_scope(true, Some(CODE), |_| Ok(scope), |_| None),
+                Ok(Some(scope))
+            );
         }
     }
 
@@ -198,7 +220,13 @@ mod tests {
 
     #[test]
     fn malformed_product_codes_stop_before_any_shell_call() {
-        for code in ["", "not-a-guid", "{12345678-1234-1234-1234-123456789ABZ}", "';exit 0;#", "{12345678-1234-1234-1234-123456789ABC}\n"] {
+        for code in [
+            "",
+            "not-a-guid",
+            "{12345678-1234-1234-1234-123456789ABZ}",
+            "';exit 0;#",
+            "{12345678-1234-1234-1234-123456789ABC}\n",
+        ] {
             let called = std::cell::Cell::new(false);
             assert!(
                 update_scope(
@@ -243,14 +271,24 @@ mod tests {
     #[test]
     fn an_answer_that_is_unclear_or_doubled_never_uses_the_uninstall_record() {
         for failure in [ProbeError::Unknown, ProbeError::Conflicting] {
-            let result = update_scope(true, Some(CODE), |_| Err(failure), |_| panic!("must not consult the record"));
+            let result = update_scope(
+                true,
+                Some(CODE),
+                |_| Err(failure),
+                |_| panic!("must not consult the record"),
+            );
             assert!(result.is_err());
         }
     }
 
     #[test]
     fn a_blocked_lookup_without_a_record_stops_the_update() {
-        let result = update_scope(true, Some(CODE), |_| Err(ProbeError::Unavailable("timed out".into())), |_| None);
+        let result = update_scope(
+            true,
+            Some(CODE),
+            |_| Err(ProbeError::Unavailable("timed out".into())),
+            |_| None,
+        );
         assert_eq!(result, Err(UNKNOWN_CONTEXT.to_string()));
     }
 
@@ -258,15 +296,31 @@ mod tests {
     fn records_in_two_contexts_give_no_fallback_scope() {
         assert_eq!(single_scope([]), None);
         assert_eq!(single_scope([MsiScope::PerUser]), Some(MsiScope::PerUser));
-        assert_eq!(single_scope([MsiScope::PerMachine, MsiScope::PerMachine]), Some(MsiScope::PerMachine));
-        assert_eq!(single_scope([MsiScope::PerMachine, MsiScope::PerUser]), None);
-        assert_eq!(single_scope([MsiScope::PerUser, MsiScope::PerMachine, MsiScope::PerMachine]), None);
+        assert_eq!(
+            single_scope([MsiScope::PerMachine, MsiScope::PerMachine]),
+            Some(MsiScope::PerMachine)
+        );
+        assert_eq!(
+            single_scope([MsiScope::PerMachine, MsiScope::PerUser]),
+            None
+        );
+        assert_eq!(
+            single_scope([
+                MsiScope::PerUser,
+                MsiScope::PerMachine,
+                MsiScope::PerMachine
+            ]),
+            None
+        );
     }
 
     #[test]
     fn each_context_asks_the_package_for_itself() {
         assert_eq!(scope_arguments(MsiScope::PerMachine), ["ALLUSERS=1"]);
-        assert_eq!(scope_arguments(MsiScope::PerUser), ["ALLUSERS=2", "MSIINSTALLPERUSER=1"]);
+        assert_eq!(
+            scope_arguments(MsiScope::PerUser),
+            ["ALLUSERS=2", "MSIINSTALLPERUSER=1"]
+        );
     }
 
     #[test]

@@ -17,7 +17,10 @@ pub struct InstallLocations {
 
 impl InstallLocations {
     pub fn folder(&self, app: &str) -> Option<&str> {
-        self.per_app.get(app).map(String::as_str).or(self.root.as_deref())
+        self.per_app
+            .get(app)
+            .map(String::as_str)
+            .or(self.root.as_deref())
     }
 }
 

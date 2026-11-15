@@ -16,7 +16,11 @@ pub fn parse(text: &str) -> Option<Version> {
     }
     // Debian/RPM spell pre-releases with `~` and append a package revision after `-`.
     let debianish = t.contains('~');
-    let t = if debianish { t.split_once('-').map_or(t, |(v, _)| v).replace('~', "-") } else { t.to_string() };
+    let t = if debianish {
+        t.split_once('-').map_or(t, |(v, _)| v).replace('~', "-")
+    } else {
+        t.to_string()
+    };
     if let Ok(v) = Version::parse(&t) {
         return Some(v);
     }
@@ -26,7 +30,11 @@ pub fn parse(text: &str) -> Option<Version> {
         None => (t.as_str(), ""),
     };
     let parts: Vec<&str> = core.split('.').collect();
-    if parts.len() == 2 && parts.iter().all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())) {
+    if parts.len() == 2
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    {
         return Version::parse(&format!("{core}.0{rest}")).ok();
     }
     None
@@ -39,12 +47,20 @@ pub fn parse_package(text: &str) -> Option<Version> {
     let t = text.trim();
     // Epoch.
     let t = match t.split_once(':') {
-        Some((epoch, rest)) if !epoch.is_empty() && epoch.bytes().all(|b| b.is_ascii_digit()) => rest,
+        Some((epoch, rest)) if !epoch.is_empty() && epoch.bytes().all(|b| b.is_ascii_digit()) => {
+            rest
+        }
         _ => t,
     };
     // Package revision: whatever follows the last '-' when the part before it is a version.
     let t = match t.rsplit_once('-') {
-        Some((upstream, rev)) if !rev.is_empty() && rev.starts_with(|c: char| c.is_ascii_digit()) && upstream.contains('.') => upstream,
+        Some((upstream, rev))
+            if !rev.is_empty()
+                && rev.starts_with(|c: char| c.is_ascii_digit())
+                && upstream.contains('.') =>
+        {
+            upstream
+        }
         _ => t,
     };
     let t = t.replace('~', "-");
@@ -52,7 +68,10 @@ pub fn parse_package(text: &str) -> Option<Version> {
         return Some(v);
     }
     // VCS snapshots and other suffixes: the leading X.Y.Z.
-    let core: String = t.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    let core: String = t
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
     let parts: Vec<&str> = core.split('.').filter(|p| !p.is_empty()).take(3).collect();
     match parts.as_slice() {
         [a, b, c] => Version::parse(&format!("{a}.{b}.{c}")).ok(),
@@ -67,18 +86,26 @@ pub fn parse_package(text: &str) -> Option<Version> {
 fn first_xyz(text: &str) -> Option<Version> {
     let bytes = text.as_bytes();
     for start in 0..bytes.len() {
-        if !bytes.get(start).is_some_and(u8::is_ascii_digit) || (start > 0 && bytes.get(start - 1).is_some_and(u8::is_ascii_digit)) {
+        if !bytes.get(start).is_some_and(u8::is_ascii_digit)
+            || (start > 0 && bytes.get(start - 1).is_some_and(u8::is_ascii_digit))
+        {
             continue;
         }
-        let Some((major, i)) = digits(text, start) else { continue };
+        let Some((major, i)) = digits(text, start) else {
+            continue;
+        };
         if bytes.get(i) != Some(&b'.') {
             continue;
         }
-        let Some((minor, j)) = digits(text, i + 1) else { continue };
+        let Some((minor, j)) = digits(text, i + 1) else {
+            continue;
+        };
         if bytes.get(j) != Some(&b'.') {
             continue;
         }
-        let Some((patch, _)) = digits(text, j + 1) else { continue };
+        let Some((patch, _)) = digits(text, j + 1) else {
+            continue;
+        };
         return Some(Version::new(major, minor, patch));
     }
     None
@@ -120,7 +147,10 @@ const RELEASE_CHANNELS: [&str; 4] = ["alpha", "beta", "rc", "nightly"];
 /// label the suite never publishes (`0.17.0-integration.20261029.f5b3f123`, `0.18.0-dev`).
 pub fn is_local_build(v: &Version) -> bool {
     let label = v.pre.as_str().split('.').next().unwrap_or_default();
-    !v.pre.is_empty() && !RELEASE_CHANNELS.iter().any(|channel| label.eq_ignore_ascii_case(channel))
+    !v.pre.is_empty()
+        && !RELEASE_CHANNELS
+            .iter()
+            .any(|channel| label.eq_ignore_ascii_case(channel))
 }
 
 /// Whether a copy running `running` should be offered `latest`. As [`is_newer`], except for a
@@ -129,7 +159,8 @@ pub fn is_local_build(v: &Version) -> bool {
 /// only offered a strictly higher `X.Y.Z`.
 pub fn offers_update(latest: &Version, running: &Version) -> bool {
     if is_local_build(running) {
-        return (latest.major, latest.minor, latest.patch) > (running.major, running.minor, running.patch);
+        return (latest.major, latest.minor, latest.patch)
+            > (running.major, running.minor, running.patch);
     }
     is_newer(latest, running)
 }
@@ -140,7 +171,8 @@ pub fn offers_update(latest: &Version, running: &Version) -> bool {
 pub fn is_update(latest: &Version, installed: &Version) -> bool {
     if installed.pre.is_empty()
         && !latest.pre.is_empty()
-        && (latest.major, latest.minor, latest.patch) == (installed.major, installed.minor, installed.patch)
+        && (latest.major, latest.minor, latest.patch)
+            == (installed.major, installed.minor, installed.patch)
     {
         return false;
     }
@@ -170,7 +202,13 @@ mod tests {
 
     #[test]
     fn published_pre_releases_and_releases_order_as_before() {
-        for label in ["0.17.0-rc.2", "0.17.0-beta.1", "0.17.0-alpha", "0.17.0-nightly.20261029", "0.17.0-RC.1"] {
+        for label in [
+            "0.17.0-rc.2",
+            "0.17.0-beta.1",
+            "0.17.0-alpha",
+            "0.17.0-nightly.20261029",
+            "0.17.0-RC.1",
+        ] {
             let running = v(label);
             assert!(!is_local_build(&running), "{label}");
             assert!(offers_update(&v("0.17.0"), &running), "{label}");

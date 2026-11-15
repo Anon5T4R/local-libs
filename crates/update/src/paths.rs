@@ -20,7 +20,11 @@ impl Paths {
         if let Ok(exe) = std::env::current_exe() {
             return Self::for_exe(app, &exe);
         }
-        let dir = if cfg!(any(target_os = "macos", target_os = "windows")) { app.name } else { app.id };
+        let dir = if cfg!(any(target_os = "macos", target_os = "windows")) {
+            app.name
+        } else {
+            app.id
+        };
         Self::per_user(dir)
     }
 
@@ -32,21 +36,32 @@ impl Paths {
             let data_dir_name = format!("{}Data", app.name.replace(' ', ""));
             return Ok(Self::under(&parent.join(data_dir_name)));
         }
-        let dir = if cfg!(any(target_os = "macos", target_os = "windows")) { app.name } else { app.id };
+        let dir = if cfg!(any(target_os = "macos", target_os = "windows")) {
+            app.name
+        } else {
+            app.id
+        };
         Self::per_user(dir)
     }
 
     /// The per-user folders named `dir` (`ArtCraft Launcher` on macOS and Windows,
     /// `artcraft-launcher` elsewhere, by convention).
     pub fn per_user(dir: &str) -> Result<Self, String> {
-        let data = crate::folders::data_local_dir().ok_or("no per-user data folder on this system")?.join(dir);
-        let cache = crate::folders::cache_dir().ok_or("no per-user cache folder on this system")?.join(dir);
+        let data = crate::folders::data_local_dir()
+            .ok_or("no per-user data folder on this system")?
+            .join(dir);
+        let cache = crate::folders::cache_dir()
+            .ok_or("no per-user cache folder on this system")?
+            .join(dir);
         Ok(Self { data, cache })
     }
 
     /// Everything under one folder (portable mode, tests).
     pub fn under(root: &std::path::Path) -> Self {
-        Self { data: root.join("data"), cache: root.join("cache") }
+        Self {
+            data: root.join("data"),
+            cache: root.join("cache"),
+        }
     }
 
     pub fn downloads(&self) -> PathBuf {
@@ -77,10 +92,19 @@ impl Paths {
 pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     let dir = path.parent().ok_or("no parent folder")?;
     std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
-    let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(|e| format!("couldn't create a temporary file in {} ({e})", dir.display()))?;
-    tmp.write_all(bytes).map_err(|e| format!("couldn't write {} ({e})", tmp.path().display()))?;
-    tmp.as_file().sync_all().map_err(|e| format!("couldn't sync {} ({e})", tmp.path().display()))?;
-    tmp.persist(path).map_err(|e| format!("couldn't replace {} ({e})", path.display()))?;
+    let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(|e| {
+        format!(
+            "couldn't create a temporary file in {} ({e})",
+            dir.display()
+        )
+    })?;
+    tmp.write_all(bytes)
+        .map_err(|e| format!("couldn't write {} ({e})", tmp.path().display()))?;
+    tmp.as_file()
+        .sync_all()
+        .map_err(|e| format!("couldn't sync {} ({e})", tmp.path().display()))?;
+    tmp.persist(path)
+        .map_err(|e| format!("couldn't replace {} ({e})", path.display()))?;
     Ok(())
 }
 

@@ -15,10 +15,21 @@ use egui_kittest::Harness;
 fn fonts(ctx: &egui::Context) {
     let mut defs = egui::FontDefinitions::default();
     for (name, bytes, family) in [
-        ("Hack", epaint_default_fonts::HACK_REGULAR, egui::FontFamily::Monospace),
-        ("Ubuntu", epaint_default_fonts::UBUNTU_LIGHT, egui::FontFamily::Proportional),
+        (
+            "Hack",
+            epaint_default_fonts::HACK_REGULAR,
+            egui::FontFamily::Monospace,
+        ),
+        (
+            "Ubuntu",
+            epaint_default_fonts::UBUNTU_LIGHT,
+            egui::FontFamily::Proportional,
+        ),
     ] {
-        defs.font_data.insert(name.into(), std::sync::Arc::new(egui::FontData::from_static(bytes)));
+        defs.font_data.insert(
+            name.into(),
+            std::sync::Arc::new(egui::FontData::from_static(bytes)),
+        );
         defs.families.entry(family).or_default().push(name.into());
     }
     // Both faces serve both families: the card uses monospace labels and proportional text.
@@ -36,7 +47,9 @@ static APP: craft_update::App = PHOTOCRAFT;
 
 #[test]
 fn dialog_screenshots() {
-    let Some(dir) = std::env::var_os("CRAFT_UPDATE_SNAPSHOT_DIR").map(PathBuf::from) else { return };
+    let Some(dir) = std::env::var_os("CRAFT_UPDATE_SNAPSHOT_DIR").map(PathBuf::from) else {
+        return;
+    };
     std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
     let long_error = "couldn't reach https://api.github.com/repos/storytold/photocraft/releases/latest: \
         connection timed out after 30 seconds (os error 110); check the network or proxy settings";
@@ -51,7 +64,11 @@ fn dialog_screenshots() {
             let dialog = CheckResultDialog::new(&APP, "0.1.0");
             let mut prompt = StartupPrompt::new(
                 &APP,
-                Release { version: Some(semver::Version::new(0, 2, 0)), tag: "v0.2.0".into(), ..Release::default() },
+                Release {
+                    version: Some(semver::Version::new(0, 2, 0)),
+                    tag: "v0.2.0".into(),
+                    ..Release::default()
+                },
                 "0.1.0",
             );
             prompt.is_self_updating = false;
@@ -72,7 +89,9 @@ fn dialog_screenshots() {
             h.run_steps(4);
             let image = h.render().unwrap_or_else(|e| panic!("render {name}: {e}"));
             let path = dir.join(format!("update-{name}-{theme_name}.png"));
-            image.save(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            image
+                .save(&path)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         }
     }
 }

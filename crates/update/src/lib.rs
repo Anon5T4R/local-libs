@@ -1,6 +1,13 @@
 //! Release checking, downloading, installing and self-updating for the Craft App Suite and ArtCraft Launcher.
 
-#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unimplemented,
+    clippy::todo,
+    clippy::unreachable
+)]
 
 pub mod app;
 pub mod desktop_entry;
@@ -56,29 +63,50 @@ pub use version::{Version, is_newer, parse as parse_version};
 pub use dialog::{CheckResultDialog, CheckResultResponse, StartupPrompt, StartupPromptResponse};
 
 /// Checks for an update against GitHub releases for the given app.
-pub fn check_for_update(app: &App, http: &Http, current_version: &str) -> Result<Option<Release>, String> {
+pub fn check_for_update(
+    app: &App,
+    http: &Http,
+    current_version: &str,
+) -> Result<Option<Release>, String> {
     let version = self_update::current_version(app, current_version).map(|v| v.to_string());
     let current_version = version.as_deref().unwrap_or(current_version);
-    let url = format!("https://api.github.com/repos/{}/releases?per_page=30", app.repo);
+    let url = format!(
+        "https://api.github.com/repos/{}/releases?per_page=30",
+        app.repo
+    );
     match http.get_api(&url, None)? {
-        crate::http::Fetched::Body { text, .. } => offered_release(&text, app.repo, current_version),
-        crate::http::Fetched::RateLimited { .. } => Err("GitHub's request limit was reached".into()),
+        crate::http::Fetched::Body { text, .. } => {
+            offered_release(&text, app.repo, current_version)
+        }
+        crate::http::Fetched::RateLimited { .. } => {
+            Err("GitHub's request limit was reached".into())
+        }
         crate::http::Fetched::NotModified | crate::http::Fetched::NotFound => Ok(None),
     }
 }
 
 /// Unix seconds now.
 pub fn now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// The release in GitHub's release list `json` to offer a copy running `current_version`, if any:
 /// the latest published release, when [`version::offers_update`] says so.
-fn offered_release(json: &str, repo: &str, current_version: &str) -> Result<Option<Release>, String> {
+fn offered_release(
+    json: &str,
+    repo: &str,
+    current_version: &str,
+) -> Result<Option<Release>, String> {
     let latest = crate::release::parse_github_release_list(json, repo, false)?;
     Ok(latest.filter(|release| {
         let running = crate::version::parse(current_version);
-        release.version.as_ref().zip(running.as_ref()).is_some_and(|(rel_v, cur_v)| crate::version::offers_update(rel_v, cur_v))
+        release
+            .version
+            .as_ref()
+            .zip(running.as_ref())
+            .is_some_and(|(rel_v, cur_v)| crate::version::offers_update(rel_v, cur_v))
     }))
 }
 
@@ -94,7 +122,9 @@ mod offer_tests {
         {"tag_name":"v0.16.4","prerelease":false,"draft":false,"assets":[]}]"#;
 
     fn offered(running: &str) -> Option<String> {
-        offered_release(LIST, REPO, running).unwrap().map(|release| release.tag)
+        offered_release(LIST, REPO, running)
+            .unwrap()
+            .map(|release| release.tag)
     }
 
     #[test]

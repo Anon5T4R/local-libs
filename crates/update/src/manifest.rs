@@ -30,7 +30,10 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn load(path: &Path) -> Self {
-        std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        std::fs::read(path)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
@@ -51,7 +54,14 @@ mod tests {
         let mut m = Manifest::default();
         m.apps.insert(
             "photocraft".into(),
-            Record { version: "0.5.0".into(), kind: PackageKind::AppImage, path: "/x/y".into(), installed_at: 1, files: vec![], needs_root: false },
+            Record {
+                version: "0.5.0".into(),
+                kind: PackageKind::AppImage,
+                path: "/x/y".into(),
+                installed_at: 1,
+                files: vec![],
+                needs_root: false,
+            },
         );
         m.save(&path).unwrap();
         assert_eq!(Manifest::load(&path), m);

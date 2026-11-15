@@ -23,7 +23,9 @@ pub fn parse_os_release(text: &str) -> OsRelease {
         if line.starts_with('#') {
             continue;
         }
-        let Some((key, value)) = line.split_once('=') else { continue };
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
         let value = unquote(value.trim()).to_ascii_lowercase();
         match key.trim() {
             "ID" => out.id = value,
@@ -47,7 +49,9 @@ fn unquote(v: &str) -> &str {
 /// and SUSE families, `.pkg.tar.zst` for the Arch Linux family, `None` for anything else
 /// (unknown distros), which gets AppImages.
 pub fn native_package(os: &OsRelease) -> Option<PackageKind> {
-    std::iter::once(&os.id).chain(&os.id_like).find_map(|id| family(id))
+    std::iter::once(&os.id)
+        .chain(&os.id_like)
+        .find_map(|id| family(id))
 }
 
 fn family(id: &str) -> Option<PackageKind> {
@@ -55,7 +59,9 @@ fn family(id: &str) -> Option<PackageKind> {
         "debian" | "ubuntu" => Some(PackageKind::Deb),
         "fedora" | "rhel" | "centos" | "suse" | "sles" => Some(PackageKind::Rpm),
         _ if id.starts_with("opensuse") => Some(PackageKind::Rpm),
-        "arch" | "manjaro" | "endeavouros" | "garuda" | "cachyos" | "artix" => Some(PackageKind::ArchPkg),
+        "arch" | "manjaro" | "endeavouros" | "garuda" | "cachyos" | "artix" => {
+            Some(PackageKind::ArchPkg)
+        }
         _ => None,
     }
 }
@@ -77,7 +83,8 @@ ID=ubuntu
 ID_LIKE=debian
 "#;
     const MINT: &str = "NAME=\"Linux Mint\"\nID=linuxmint\nID_LIKE=\"ubuntu debian\"\n";
-    const ARCH: &str = "NAME=\"Arch Linux\"\nPRETTY_NAME=\"Arch Linux\"\nID=arch\nBUILD_ID=rolling\n";
+    const ARCH: &str =
+        "NAME=\"Arch Linux\"\nPRETTY_NAME=\"Arch Linux\"\nID=arch\nBUILD_ID=rolling\n";
     const TUMBLEWEED: &str = "NAME=\"openSUSE Tumbleweed\"\n# a comment\nID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\n";
     const ROCKY: &str = "NAME=\"Rocky Linux\"\nID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n";
     const UNKNOWN: &str = "NAME=\"Some OS\"\nID=someos\n";
@@ -88,8 +95,20 @@ ID_LIKE=debian
 
     #[test]
     fn os_release_is_parsed() {
-        assert_eq!(parse_os_release(FEDORA), OsRelease { id: "fedora".into(), id_like: vec![] });
-        assert_eq!(parse_os_release(MINT), OsRelease { id: "linuxmint".into(), id_like: vec!["ubuntu".into(), "debian".into()] });
+        assert_eq!(
+            parse_os_release(FEDORA),
+            OsRelease {
+                id: "fedora".into(),
+                id_like: vec![]
+            }
+        );
+        assert_eq!(
+            parse_os_release(MINT),
+            OsRelease {
+                id: "linuxmint".into(),
+                id_like: vec!["ubuntu".into(), "debian".into()]
+            }
+        );
         assert_eq!(parse_os_release("ID='opensuse-leap'\n").id, "opensuse-leap");
         assert_eq!(parse_os_release(""), OsRelease::default());
     }

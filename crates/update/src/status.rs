@@ -46,7 +46,10 @@ impl InstallSource {
     /// Whether the launcher may replace or remove this copy itself. Packages owned by a system
     /// package manager (deb, rpm, Flatpak) are updated through that manager instead.
     pub fn launcher_can_update(self) -> bool {
-        matches!(self, Self::Launcher | Self::MacApp | Self::Msi | Self::AppImage)
+        matches!(
+            self,
+            Self::Launcher | Self::MacApp | Self::Msi | Self::AppImage
+        )
     }
 }
 

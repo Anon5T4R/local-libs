@@ -37,7 +37,12 @@ pub const UPSTREAM_PUBLISHER: &str = "Learning Machines LLC";
 
 impl App {
     /// An app with no former names and no icon.
-    pub const fn new(id: &'static str, name: &'static str, tagline: &'static str, repo: &'static str) -> Self {
+    pub const fn new(
+        id: &'static str,
+        name: &'static str,
+        tagline: &'static str,
+        repo: &'static str,
+    ) -> Self {
         Self {
             id,
             name,
@@ -101,20 +106,34 @@ mod tests {
 
     #[test]
     fn former_names_follow_the_current_one() {
-        let pdf =
-            App { former_ids: &["printcraft"], former_names: &["PrintCraft"], ..App::new("pdfcraft", "PdfCraft", "PDFs", "storytold/pdfcraft") };
+        let pdf = App {
+            former_ids: &["printcraft"],
+            former_names: &["PrintCraft"],
+            ..App::new("pdfcraft", "PdfCraft", "PDFs", "storytold/pdfcraft")
+        };
         assert_eq!(pdf.stems().collect::<Vec<_>>(), ["pdfcraft", "printcraft"]);
         assert_eq!(pdf.names().collect::<Vec<_>>(), ["PdfCraft", "PrintCraft"]);
         assert_eq!(pdf.bundle_id(), "ai.storyteller.pdfcraft");
-        assert_eq!(pdf.releases_url(), "https://github.com/storytold/pdfcraft/releases");
+        assert_eq!(
+            pdf.releases_url(),
+            "https://github.com/storytold/pdfcraft/releases"
+        );
     }
 
     #[test]
     fn the_suites_own_apps_use_their_packaging_bundle_ids() {
-        for (id, bundle) in [("localpaint", "com.localpaint.app"), ("localphoto", "com.localphoto.app"), ("localobsidian", "com.localobsidian.app"), ("localmind", "com.localmind.app")] {
+        for (id, bundle) in [
+            ("localpaint", "com.localpaint.app"),
+            ("localphoto", "com.localphoto.app"),
+            ("localobsidian", "com.localobsidian.app"),
+            ("localmind", "com.localmind.app"),
+        ] {
             let app = App::new(id, id, "", "");
             assert_eq!(app.bundle_id(), bundle);
         }
-        assert_eq!(App::new("localsheets", "Local Sheets", "", "").bundle_id(), "ai.storyteller.localsheets");
+        assert_eq!(
+            App::new("localsheets", "Local Sheets", "", "").bundle_id(),
+            "ai.storyteller.localsheets"
+        );
     }
 }

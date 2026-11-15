@@ -19,7 +19,9 @@ pub struct SystemProxy {
 /// without any user name or password.
 pub fn pick() -> Option<Proxy> {
     if let Some(proxy) = Proxy::try_from_env() {
-        let mut builder = Proxy::builder(proxy.protocol()).host(proxy.host()).port(proxy.port());
+        let mut builder = Proxy::builder(proxy.protocol())
+            .host(proxy.host())
+            .port(proxy.port());
         if let Some(user) = proxy.username() {
             builder = builder.username(user);
         }
@@ -38,20 +40,39 @@ pub fn pick() -> Option<Proxy> {
             builder = builder.no_proxy(entry);
         }
         if let Ok(p) = builder.build() {
-            log::info!("HTTP proxy: {} {}:{} (from environment variables)", p.protocol(), p.host(), p.port());
+            log::info!(
+                "HTTP proxy: {} {}:{} (from environment variables)",
+                p.protocol(),
+                p.host(),
+                p.port()
+            );
             return Some(p);
         }
-        log::info!("HTTP proxy: {} {}:{} (from environment variables)", proxy.protocol(), proxy.host(), proxy.port());
+        log::info!(
+            "HTTP proxy: {} {}:{} (from environment variables)",
+            proxy.protocol(),
+            proxy.host(),
+            proxy.port()
+        );
         return Some(proxy);
     }
     let system = system()?;
     match to_proxy(&system) {
         Ok(proxy) => {
-            log::info!("HTTP proxy: {} {}:{} (from {})", proxy.protocol(), proxy.host(), proxy.port(), system.source);
+            log::info!(
+                "HTTP proxy: {} {}:{} (from {})",
+                proxy.protocol(),
+                proxy.host(),
+                proxy.port(),
+                system.source
+            );
             Some(proxy)
         }
         Err(e) => {
-            log::warn!("ignoring the proxy in {} ({e}); connecting directly", system.source);
+            log::warn!(
+                "ignoring the proxy in {} ({e}); connecting directly",
+                system.source
+            );
             None
         }
     }
@@ -64,7 +85,11 @@ pub fn to_proxy(system: &SystemProxy) -> Result<Proxy, ureq::Error> {
     if let Some(port) = system.port {
         builder = builder.port(port);
     }
-    for entry in ["localhost", "127.0.0.1", "[::1]"].iter().copied().chain(system.bypass.iter().map(String::as_str)) {
+    for entry in ["localhost", "127.0.0.1", "[::1]"]
+        .iter()
+        .copied()
+        .chain(system.bypass.iter().map(String::as_str))
+    {
         builder = builder.no_proxy(entry);
     }
     builder.build()
@@ -75,7 +100,9 @@ fn system() -> Option<SystemProxy> {
     use winreg::RegKey;
     use winreg::enums::HKEY_CURRENT_USER;
 
-    let key = RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Internet Settings").ok()?;
+    let key = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Internet Settings")
+        .ok()?;
     let enabled: u32 = key.get_value("ProxyEnable").unwrap_or(0);
     if enabled == 0 {
         return None;
@@ -83,12 +110,21 @@ fn system() -> Option<SystemProxy> {
     let server: String = key.get_value("ProxyServer").ok()?;
     let overrides: String = key.get_value("ProxyOverride").unwrap_or_default();
     let (host, port) = windows_proxy_server(&server)?;
-    Some(SystemProxy { host, port, bypass: windows_bypass(&overrides), source: "Windows proxy settings" })
+    Some(SystemProxy {
+        host,
+        port,
+        bypass: windows_bypass(&overrides),
+        source: "Windows proxy settings",
+    })
 }
 
 #[cfg(target_os = "macos")]
 fn system() -> Option<SystemProxy> {
-    let out = crate::process::capture("/usr/sbin/scutil", &["--proxy"], std::time::Duration::from_secs(3))?;
+    let out = crate::process::capture(
+        "/usr/sbin/scutil",
+        &["--proxy"],
+        std::time::Duration::from_secs(3),
+    )?;
     parse_scutil(&out)
 }
 
@@ -102,10 +138,18 @@ fn system() -> Option<SystemProxy> {
 /// `http=h:p;https=h:p;socks=h:p`. Prefers the HTTPS entry (every request is HTTPS), then HTTP.
 /// SOCKS-only settings are ignored.
 pub fn windows_proxy_server(value: &str) -> Option<(String, Option<u16>)> {
-    let entries: Vec<&str> = value.split([';', ' ']).map(str::trim).filter(|e| !e.is_empty()).collect();
+    let entries: Vec<&str> = value
+        .split([';', ' '])
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .collect();
     let chosen = if entries.iter().any(|e| e.contains('=')) {
         let find = |scheme: &str| {
-            entries.iter().find_map(|e| e.split_once('=').filter(|(k, _)| k.trim().eq_ignore_ascii_case(scheme)).map(|(_, v)| v.trim()))
+            entries.iter().find_map(|e| {
+                e.split_once('=')
+                    .filter(|(k, _)| k.trim().eq_ignore_ascii_case(scheme))
+                    .map(|(_, v)| v.trim())
+            })
         };
         find("https").or_else(|| find("http"))?
     } else {
@@ -136,7 +180,9 @@ fn host_port(value: &str) -> Option<(String, Option<u16>)> {
         };
     }
     match rest.split_once(':') {
-        Some((host, port)) if !host.is_empty() && !port.contains(':') => Some((host.to_string(), Some(port.parse().ok()?))),
+        Some((host, port)) if !host.is_empty() && !port.contains(':') => {
+            Some((host.to_string(), Some(port.parse().ok()?)))
+        }
         Some(_) => None,
         None => Some((rest.to_string(), None)),
     }
@@ -145,7 +191,12 @@ fn host_port(value: &str) -> Option<(String, Option<u16>)> {
 /// Parses Windows' `ProxyOverride` bypass list (`*.local;10.*;<local>`). `<local>` (plain host
 /// names without a dot) has no `NO_PROXY` equivalent and is dropped.
 pub fn windows_bypass(value: &str) -> Vec<String> {
-    value.split([';', ' ']).map(str::trim).filter(|e| !e.is_empty() && !e.eq_ignore_ascii_case("<local>")).map(str::to_string).collect()
+    value
+        .split([';', ' '])
+        .map(str::trim)
+        .filter(|e| !e.is_empty() && !e.eq_ignore_ascii_case("<local>"))
+        .map(str::to_string)
+        .collect()
 }
 
 /// Parses `scutil --proxy` output: the HTTPS proxy when enabled, else the HTTP proxy, plus the
@@ -166,7 +217,9 @@ pub fn parse_scutil(out: &str) -> Option<SystemProxy> {
             }
             continue;
         }
-        let Some((k, v)) = line.split_once(" : ") else { continue };
+        let Some((k, v)) = line.split_once(" : ") else {
+            continue;
+        };
         let (k, v) = (k.trim(), v.trim());
         if k == "ExceptionsList" && v.starts_with("<array>") {
             in_exceptions = !v.ends_with('}');
@@ -179,12 +232,18 @@ pub fn parse_scutil(out: &str) -> Option<SystemProxy> {
         if get(&format!("{kind}Enable")) != Some("1") {
             return None;
         }
-        let host = get(&format!("{kind}Proxy")).filter(|h| !h.is_empty() && !h.contains(['@', '/', ' ']))?;
+        let host = get(&format!("{kind}Proxy"))
+            .filter(|h| !h.is_empty() && !h.contains(['@', '/', ' ']))?;
         let port = match get(&format!("{kind}Port")) {
             Some(p) => Some(p.parse().ok()?),
             None => None,
         };
-        Some(SystemProxy { host: host.to_string(), port, bypass: bypass.clone(), source: "macOS proxy settings" })
+        Some(SystemProxy {
+            host: host.to_string(),
+            port,
+            bypass: bypass.clone(),
+            source: "macOS proxy settings",
+        })
     })
 }
 
@@ -198,18 +257,36 @@ mod tests {
 
     #[test]
     fn windows_single_proxy_for_everything() {
-        assert_eq!(windows_proxy_server("proxy.corp:8080"), hp("proxy.corp", Some(8080)));
-        assert_eq!(windows_proxy_server("127.0.0.1:7890"), hp("127.0.0.1", Some(7890)));
+        assert_eq!(
+            windows_proxy_server("proxy.corp:8080"),
+            hp("proxy.corp", Some(8080))
+        );
+        assert_eq!(
+            windows_proxy_server("127.0.0.1:7890"),
+            hp("127.0.0.1", Some(7890))
+        );
         assert_eq!(windows_proxy_server("proxy.corp"), hp("proxy.corp", None));
-        assert_eq!(windows_proxy_server("http://proxy.corp:3128/"), hp("proxy.corp", Some(3128)));
+        assert_eq!(
+            windows_proxy_server("http://proxy.corp:3128/"),
+            hp("proxy.corp", Some(3128))
+        );
         assert_eq!(windows_proxy_server("[::1]:8080"), hp("[::1]", Some(8080)));
     }
 
     #[test]
     fn windows_per_protocol_list_prefers_https() {
-        assert_eq!(windows_proxy_server("http=h1:80;https=h2:443;ftp=h3:21;socks=h4:1080"), hp("h2", Some(443)));
-        assert_eq!(windows_proxy_server("ftp=h3:21;http=h1:8080"), hp("h1", Some(8080)));
-        assert_eq!(windows_proxy_server("HTTPS=h2:8443 ; "), hp("h2", Some(8443)));
+        assert_eq!(
+            windows_proxy_server("http=h1:80;https=h2:443;ftp=h3:21;socks=h4:1080"),
+            hp("h2", Some(443))
+        );
+        assert_eq!(
+            windows_proxy_server("ftp=h3:21;http=h1:8080"),
+            hp("h1", Some(8080))
+        );
+        assert_eq!(
+            windows_proxy_server("HTTPS=h2:8443 ; "),
+            hp("h2", Some(8443))
+        );
     }
 
     #[test]
@@ -224,7 +301,10 @@ mod tests {
 
     #[test]
     fn windows_bypass_list() {
-        assert_eq!(windows_bypass("*.local;10.*; localhost;<local>"), ["*.local", "10.*", "localhost"]);
+        assert_eq!(
+            windows_bypass("*.local;10.*; localhost;<local>"),
+            ["*.local", "10.*", "localhost"]
+        );
         assert!(windows_bypass("").is_empty());
     }
 
@@ -263,19 +343,40 @@ mod tests {
         let out = "<dictionary> {\n  ExceptionsList : <array> {\n    0 : *.local\n  }\n  FTPPassive : 1\n  HTTPEnable : 0\n  HTTPSEnable : 0\n}\n";
         assert_eq!(parse_scutil(out), None);
         assert_eq!(parse_scutil(""), None);
-        assert_eq!(parse_scutil("HTTPSEnable : 1\nHTTPSProxy : \nHTTPSPort : 1\n"), None);
+        assert_eq!(
+            parse_scutil("HTTPSEnable : 1\nHTTPSProxy : \nHTTPSPort : 1\n"),
+            None
+        );
     }
 
     #[test]
     fn system_proxy_becomes_a_ureq_proxy_that_skips_loopback() {
-        let p = to_proxy(&SystemProxy { host: "proxy.corp".into(), port: Some(8080), bypass: vec!["*.local".into()], source: "test" }).unwrap();
-        assert_eq!((p.protocol(), p.host(), p.port()), (ProxyProtocol::Http, "proxy.corp", 8080));
-        for (url, direct) in
-            [("http://127.0.0.1:1/", true), ("http://localhost/", true), ("https://nas.local/", true), ("https://github.com/", false)]
-        {
+        let p = to_proxy(&SystemProxy {
+            host: "proxy.corp".into(),
+            port: Some(8080),
+            bypass: vec!["*.local".into()],
+            source: "test",
+        })
+        .unwrap();
+        assert_eq!(
+            (p.protocol(), p.host(), p.port()),
+            (ProxyProtocol::Http, "proxy.corp", 8080)
+        );
+        for (url, direct) in [
+            ("http://127.0.0.1:1/", true),
+            ("http://localhost/", true),
+            ("https://nas.local/", true),
+            ("https://github.com/", false),
+        ] {
             assert_eq!(p.is_no_proxy(&url.parse().unwrap()), direct, "{url}");
         }
-        let p = to_proxy(&SystemProxy { host: "proxy.corp".into(), port: None, bypass: vec![], source: "test" }).unwrap();
+        let p = to_proxy(&SystemProxy {
+            host: "proxy.corp".into(),
+            port: None,
+            bypass: vec![],
+            source: "test",
+        })
+        .unwrap();
         assert_eq!(p.port(), 80);
     }
 }

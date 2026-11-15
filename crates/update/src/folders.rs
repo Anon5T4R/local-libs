@@ -9,7 +9,9 @@ pub fn home_dir() -> Option<PathBuf> {
 
 /// An absolute folder from the environment variable `name` (an XDG one must be absolute).
 fn absolute_env(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name).map(PathBuf::from).filter(|p| p.is_absolute())
+    std::env::var_os(name)
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
 }
 
 /// The known folder Local AppData, which follows a redirected profile (the environment variable
@@ -43,11 +45,21 @@ pub fn data_local_dir() -> Option<PathBuf> {
 /// The host's per-user data folder, also from inside a Flatpak, where `XDG_DATA_HOME` points into
 /// the sandbox (`~/.var/app/<id>/data`). Files other programs on the host must find go here.
 pub fn host_data_local_dir() -> Option<PathBuf> {
-    pick_host_data_dir(std::path::Path::new("/.flatpak-info").exists(), absolute_env("HOST_XDG_DATA_HOME"), home_dir(), data_local_dir())
+    pick_host_data_dir(
+        std::path::Path::new("/.flatpak-info").exists(),
+        absolute_env("HOST_XDG_DATA_HOME"),
+        home_dir(),
+        data_local_dir(),
+    )
 }
 
 /// [`host_data_local_dir`] with its inputs passed in, so every CI OS can test the Flatpak case.
-fn pick_host_data_dir(in_flatpak: bool, host_xdg: Option<PathBuf>, home: Option<PathBuf>, local: Option<PathBuf>) -> Option<PathBuf> {
+fn pick_host_data_dir(
+    in_flatpak: bool,
+    host_xdg: Option<PathBuf>,
+    home: Option<PathBuf>,
+    local: Option<PathBuf>,
+) -> Option<PathBuf> {
     if in_flatpak {
         return host_xdg.or_else(|| home.map(|h| h.join(".local").join("share")));
     }
@@ -80,11 +92,22 @@ mod tests {
     #[test]
     fn inside_a_flatpak_the_hosts_data_folder_is_used() {
         let home = Some(PathBuf::from("/home/u"));
-        let sandboxed = Some(PathBuf::from("/home/u/.var/app/ai.storyteller.artcraft-launcher/data"));
+        let sandboxed = Some(PathBuf::from(
+            "/home/u/.var/app/ai.storyteller.artcraft-launcher/data",
+        ));
         let host = Some(PathBuf::from("/srv/u/data"));
-        assert_eq!(pick_host_data_dir(true, host.clone(), home.clone(), sandboxed.clone()), host);
-        assert_eq!(pick_host_data_dir(true, None, home.clone(), sandboxed.clone()), Some(PathBuf::from("/home/u/.local/share")));
-        assert_eq!(pick_host_data_dir(false, host, home, sandboxed.clone()), sandboxed);
+        assert_eq!(
+            pick_host_data_dir(true, host.clone(), home.clone(), sandboxed.clone()),
+            host
+        );
+        assert_eq!(
+            pick_host_data_dir(true, None, home.clone(), sandboxed.clone()),
+            Some(PathBuf::from("/home/u/.local/share"))
+        );
+        assert_eq!(
+            pick_host_data_dir(false, host, home, sandboxed.clone()),
+            sandboxed
+        );
         assert_eq!(pick_host_data_dir(true, None, None, None), None);
     }
 }

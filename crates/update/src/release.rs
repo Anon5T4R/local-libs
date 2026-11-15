@@ -37,14 +37,19 @@ pub struct Release {
 
 impl Release {
     pub fn version_label(&self) -> String {
-        self.version.as_ref().map_or_else(|| self.tag.clone(), ToString::to_string)
+        self.version
+            .as_ref()
+            .map_or_else(|| self.tag.clone(), ToString::to_string)
     }
 
     /// Fills in checksums from a `SHA256SUMS.txt` for assets that don't have one.
     pub fn apply_sums(&mut self, sums: &[(String, String)]) {
         for asset in &mut self.assets {
             if asset.sha256.is_none() {
-                asset.sha256 = sums.iter().find(|(_, n)| *n == asset.name).map(|(h, _)| h.clone());
+                asset.sha256 = sums
+                    .iter()
+                    .find(|(_, n)| *n == asset.name)
+                    .map(|(h, _)| h.clone());
             }
         }
     }
@@ -75,7 +80,9 @@ fn is_hex64(s: &str) -> bool {
 /// `https://` web link never needs these characters unescaped, we refuse any URL that contains a
 /// shell/cmd metacharacter rather than rely on the opener to neutralise it.
 pub fn safe_web_link(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("https://") else { return false };
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     url.len() <= 2000
         && !authority.is_empty()
@@ -88,7 +95,27 @@ pub fn safe_web_link(url: &str) -> bool {
 /// `https` URL never needs any of them unescaped in a browser-opened link. `%` matters because
 /// `cmd.exe` expands `%NAME%` references, and an expanded value could itself carry metacharacters.
 pub fn is_shell_meta(c: char) -> bool {
-    matches!(c, '|' | '&' | ';' | '<' | '>' | '(' | ')' | '$' | '`' | '"' | '\'' | '^' | '!' | '*' | '%' | '{' | '}' | '[' | ']')
+    matches!(
+        c,
+        '|' | '&'
+            | ';'
+            | '<'
+            | '>'
+            | '('
+            | ')'
+            | '$'
+            | '`'
+            | '"'
+            | '\''
+            | '^'
+            | '!'
+            | '*'
+            | '%'
+            | '{'
+            | '}'
+            | '['
+            | ']'
+    )
 }
 
 /// Whether `url` is a valid release page URL strictly for `repo` on GitHub:
@@ -109,7 +136,14 @@ pub fn safe_release_html_url(repo: &str, url: &str) -> Option<String> {
         return None;
     }
     for seg in path.split('/') {
-        if seg.is_empty() || seg == "." || seg == ".." || seg.contains("%2f") || seg.contains("%2F") || seg.contains("%5c") || seg.contains("%5C") {
+        if seg.is_empty()
+            || seg == "."
+            || seg == ".."
+            || seg.contains("%2f")
+            || seg.contains("%2F")
+            || seg.contains("%5c")
+            || seg.contains("%5C")
+        {
             return None;
         }
     }
@@ -130,16 +164,23 @@ pub fn download_prefix(repo: &str) -> String {
 /// segments with no traversal (`.`/`..`), no additional slashes, no query or fragment, and no
 /// backslash or percent-encoded separators that a client could later re-interpret.
 pub fn download_url_under(url: &str, prefix: &str) -> bool {
-    let Some(rest) = url.strip_prefix(prefix) else { return false };
+    let Some(rest) = url.strip_prefix(prefix) else {
+        return false;
+    };
     download_suffix_ok(rest)
 }
 
 /// Whether `url` sits under a developer mirror `base` (ending in `/`) without escaping it.
 pub fn download_url_under_mirror(url: &str, base: &str) -> bool {
-    let Some(rest) = url.strip_prefix(base) else { return false };
+    let Some(rest) = url.strip_prefix(base) else {
+        return false;
+    };
     // A mirror serves `<tag>/<name>` just like GitHub, but we only require that it can't climb out
     // of its own folder; its layout is otherwise the developer's business.
-    !rest.is_empty() && !url.contains(['?', '#', '\\']) && !contains_traversal(rest) && !contains_encoded_separator(rest)
+    !rest.is_empty()
+        && !url.contains(['?', '#', '\\'])
+        && !contains_traversal(rest)
+        && !contains_encoded_separator(rest)
 }
 
 /// `<tag>/<name>`: exactly two non-empty segments, no traversal, no re-interpretable separators.
@@ -148,8 +189,15 @@ fn download_suffix_ok(rest: &str) -> bool {
         return false;
     }
     let mut parts = rest.split('/');
-    let (Some(tag), Some(name), None) = (parts.next(), parts.next(), parts.next()) else { return false };
-    !tag.is_empty() && tag != "." && tag != ".." && tag.len() <= 64 && !tag.contains('\\') && valid_file_name(name)
+    let (Some(tag), Some(name), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    !tag.is_empty()
+        && tag != "."
+        && tag != ".."
+        && tag.len() <= 64
+        && !tag.contains('\\')
+        && valid_file_name(name)
 }
 
 /// Any `.` or `..` path segment that could climb out of the repository.
@@ -161,31 +209,46 @@ fn contains_traversal(rest: &str) -> bool {
 /// separators after the check, so a confined URL must not contain them.
 fn contains_encoded_separator(rest: &str) -> bool {
     let bytes = rest.as_bytes();
-    bytes.windows(3).any(|w| w[0] == b'%' && matches!(&w[1..].to_ascii_lowercase()[..], b"2f" | b"5c"))
+    bytes
+        .windows(3)
+        .any(|w| w[0] == b'%' && matches!(&w[1..].to_ascii_lowercase()[..], b"2f" | b"5c"))
 }
 
 /// Reads `GET /repos/<repo>/releases/latest` (or one element of `/releases`).
 pub fn parse_github_release(json: &str, repo: &str) -> Result<Release, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
     release_from_value(&v, repo)
 }
 
 /// Reads `GET /repos/<repo>/releases` and returns the newest stable (or any, with
 /// `allow_prerelease`) published release.
-pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool) -> Result<Option<Release>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+pub fn parse_github_release_list(
+    json: &str,
+    repo: &str,
+    allow_prerelease: bool,
+) -> Result<Option<Release>, String> {
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
     let list = v.as_array().ok_or("unexpected answer from GitHub")?;
     let mut best: Option<Release> = None;
     for item in list {
         if item["draft"].as_bool().unwrap_or(false) {
             continue;
         }
-        let Ok(r) = release_from_value(item, repo) else { continue };
-        let Some(ver) = r.version.as_ref() else { continue };
+        let Ok(r) = release_from_value(item, repo) else {
+            continue;
+        };
+        let Some(ver) = r.version.as_ref() else {
+            continue;
+        };
         if !allow_prerelease && (r.prerelease || !version::is_stable(ver)) {
             continue;
         }
-        let newer = best.as_ref().and_then(|b| b.version.as_ref()).is_none_or(|b| version::is_newer(ver, b));
+        let newer = best
+            .as_ref()
+            .and_then(|b| b.version.as_ref())
+            .is_none_or(|b| version::is_newer(ver, b));
         if newer {
             best = Some(r);
         }
@@ -195,32 +258,67 @@ pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool)
 
 fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, String> {
     if let Some(msg) = v["message"].as_str() {
-        return Err(if msg == "Not Found" { "no releases yet".into() } else { format!("GitHub says: {}", truncate(msg, 200)) });
+        return Err(if msg == "Not Found" {
+            "no releases yet".into()
+        } else {
+            format!("GitHub says: {}", truncate(msg, 200))
+        });
     }
-    let tag = v["tag_name"].as_str().filter(|t| !t.is_empty() && t.len() <= 64).ok_or("no release found")?.to_string();
+    let tag = v["tag_name"]
+        .as_str()
+        .filter(|t| !t.is_empty() && t.len() <= 64)
+        .ok_or("no release found")?
+        .to_string();
     let releases = format!("https://github.com/{repo}/releases");
-    let html_url = v["html_url"].as_str().and_then(|u| safe_release_html_url(repo, u)).unwrap_or_else(|| releases.clone());
+    let html_url = v["html_url"]
+        .as_str()
+        .and_then(|u| safe_release_html_url(repo, u))
+        .unwrap_or_else(|| releases.clone());
     let prefix = download_prefix(repo);
     let assets = v["assets"]
         .as_array()
         .map(|list| {
             list.iter()
                 .filter_map(|a| {
-                    let name = a["name"].as_str().filter(|n| valid_file_name(n))?.to_string();
-                    let url = a["browser_download_url"].as_str().filter(|u| download_url_under(u, &prefix))?.to_string();
-                    let sha256 = a["digest"].as_str().and_then(|d| d.strip_prefix("sha256:")).filter(|h| is_hex64(h)).map(str::to_ascii_lowercase);
-                    Some(Asset { name, size: a["size"].as_u64().unwrap_or(0), url, sha256 })
+                    let name = a["name"]
+                        .as_str()
+                        .filter(|n| valid_file_name(n))?
+                        .to_string();
+                    let url = a["browser_download_url"]
+                        .as_str()
+                        .filter(|u| download_url_under(u, &prefix))?
+                        .to_string();
+                    let sha256 = a["digest"]
+                        .as_str()
+                        .and_then(|d| d.strip_prefix("sha256:"))
+                        .filter(|h| is_hex64(h))
+                        .map(str::to_ascii_lowercase);
+                    Some(Asset {
+                        name,
+                        size: a["size"].as_u64().unwrap_or(0),
+                        url,
+                        sha256,
+                    })
                 })
                 .collect()
         })
         .unwrap_or_default();
     Ok(Release {
         version: version::parse(&tag),
-        name: v["name"].as_str().map(|n| truncate(n, 120)).filter(|n| !n.is_empty()).unwrap_or_else(|| tag.clone()),
+        name: v["name"]
+            .as_str()
+            .map(|n| truncate(n, 120))
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| tag.clone()),
         tag,
-        published_at: v["published_at"].as_str().and_then(crate::time::parse_rfc3339),
+        published_at: v["published_at"]
+            .as_str()
+            .and_then(crate::time::parse_rfc3339),
         html_url,
-        notes: v["body"].as_str().map(|b| truncate(b, MAX_NOTES)).unwrap_or_default(),
+        notes: v["body"]
+            .as_str()
+            .map(|b| truncate(b, MAX_NOTES))
+            .unwrap_or_default(),
         prerelease: v["prerelease"].as_bool().unwrap_or(false),
         assets,
     })
@@ -232,9 +330,19 @@ pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Re
     let prefix = download_prefix(repo);
     let mut assets: Vec<Asset> = sums
         .iter()
-        .map(|(hash, name)| Asset { name: name.clone(), size: 0, url: format!("{prefix}{tag}/{name}"), sha256: Some(hash.clone()) })
+        .map(|(hash, name)| Asset {
+            name: name.clone(),
+            size: 0,
+            url: format!("{prefix}{tag}/{name}"),
+            sha256: Some(hash.clone()),
+        })
         .collect();
-    assets.push(Asset { name: "SHA256SUMS.txt".into(), size: 0, url: format!("{prefix}{tag}/SHA256SUMS.txt"), sha256: None });
+    assets.push(Asset {
+        name: "SHA256SUMS.txt".into(),
+        size: 0,
+        url: format!("{prefix}{tag}/SHA256SUMS.txt"),
+        sha256: None,
+    });
     Release {
         tag: tag.to_string(),
         version: version::parse(tag),
@@ -250,7 +358,12 @@ pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Re
 /// The tag in a `https://github.com/<repo>/releases/tag/<tag>` redirect target.
 pub fn tag_from_redirect(location: &str, repo: &str) -> Option<String> {
     let rest = location.strip_prefix(&format!("https://github.com/{repo}/releases/tag/"))?;
-    (!rest.is_empty() && rest.len() <= 64 && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-+".contains(&b))).then(|| rest.to_string())
+    (!rest.is_empty()
+        && rest.len() <= 64
+        && rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-+".contains(&b)))
+    .then(|| rest.to_string())
 }
 
 /// Reads `sha256sum` output: `<hex>  <name>` (or `<hex> *<name>`) per line.
@@ -259,7 +372,8 @@ pub fn parse_sha256sums(text: &str) -> Vec<(String, String)> {
         .filter_map(|line| {
             let (hash, rest) = line.trim().split_once(char::is_whitespace)?;
             let name = rest.trim_start().trim_start_matches('*');
-            (is_hex64(hash) && valid_file_name(name)).then(|| (hash.to_ascii_lowercase(), name.to_string()))
+            (is_hex64(hash) && valid_file_name(name))
+                .then(|| (hash.to_ascii_lowercase(), name.to_string()))
         })
         .collect()
 }
@@ -271,7 +385,9 @@ pub fn valid_file_name(name: &str) -> bool {
         && name != "."
         && name != ".."
         && !name.starts_with('.')
-        && !name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*'))
+        && !name.chars().any(|c| {
+            c.is_control() || matches!(c, '/' | '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*')
+        })
 }
 
 /// `s` cut to at most `max` bytes (on a char boundary) with an ellipsis, for text from a
@@ -303,7 +419,9 @@ mod tests {
 
     #[test]
     fn only_plain_https_links_pass() {
-        assert!(safe_web_link("https://github.com/storytold/photocraft/releases/tag/v1"));
+        assert!(safe_web_link(
+            "https://github.com/storytold/photocraft/releases/tag/v1"
+        ));
         for bad in [
             "http://example.com/",
             "javascript:alert(1)",
@@ -355,11 +473,18 @@ mod tests {
 
     #[test]
     fn drops_downloads_that_point_elsewhere() {
-        for url in ["https://evil.example/photocraft.dmg", "https://github.com/storytold/other/releases/download/v1/x.dmg", "javascript:alert(1)"] {
+        for url in [
+            "https://evil.example/photocraft.dmg",
+            "https://github.com/storytold/other/releases/download/v1/x.dmg",
+            "javascript:alert(1)",
+        ] {
             let r = parse_github_release(&api_json(url), REPO).unwrap();
             assert!(r.assets.is_empty(), "{url}");
         }
-        assert_eq!(parse_github_release(r#"{"message":"Not Found"}"#, REPO).unwrap_err(), "no releases yet");
+        assert_eq!(
+            parse_github_release(r#"{"message":"Not Found"}"#, REPO).unwrap_err(),
+            "no releases yet"
+        );
         assert!(parse_github_release("<html>", REPO).is_err());
     }
 
@@ -367,7 +492,10 @@ mod tests {
     fn release_html_url_rejects_traversal_and_metacharacters() {
         let repo = "storytold/photocraft";
         assert_eq!(
-            safe_release_html_url(repo, "https://github.com/storytold/photocraft/releases/tag/v1.0.0"),
+            safe_release_html_url(
+                repo,
+                "https://github.com/storytold/photocraft/releases/tag/v1.0.0"
+            ),
             Some("https://github.com/storytold/photocraft/releases/tag/v1.0.0".to_string())
         );
         assert_eq!(
@@ -384,7 +512,10 @@ mod tests {
             "https://github.com/storytold/other/releases/tag/v1.0.0",
             "http://github.com/storytold/photocraft/releases/tag/v1",
         ] {
-            assert!(safe_release_html_url(repo, bad).is_none(), "should reject: {bad}");
+            assert!(
+                safe_release_html_url(repo, bad).is_none(),
+                "should reject: {bad}"
+            );
         }
     }
 
@@ -406,7 +537,10 @@ mod tests {
         }
         // A plain, confined download still passes.
         let prefix = download_prefix(REPO);
-        assert!(download_url_under("https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-macos-universal.dmg", &prefix));
+        assert!(download_url_under(
+            "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-macos-universal.dmg",
+            &prefix
+        ));
     }
 
     #[test]
@@ -417,20 +551,59 @@ mod tests {
             {"tag_name":"v0.7.0","draft":true,"assets":[]},
             {"tag_name":"v0.5.0","prerelease":false,"draft":false,"assets":[]},
             {"tag_name":"v0.4.0","prerelease":false,"draft":false,"assets":[]}]"#;
-        assert_eq!(parse_github_release_list(json, REPO, false).unwrap().unwrap().tag, "v0.5.0");
-        assert_eq!(parse_github_release_list(json, REPO, true).unwrap().unwrap().tag, "v0.6.0-rc.1");
+        assert_eq!(
+            parse_github_release_list(json, REPO, false)
+                .unwrap()
+                .unwrap()
+                .tag,
+            "v0.5.0"
+        );
+        assert_eq!(
+            parse_github_release_list(json, REPO, true)
+                .unwrap()
+                .unwrap()
+                .tag,
+            "v0.6.0-rc.1"
+        );
         assert_eq!(parse_github_release_list("[]", REPO, false).unwrap(), None);
     }
 
     #[test]
     fn reads_checksums_and_redirects() {
-        let sums = parse_sha256sums(&format!("{HASH}  photocraft-0.5.0-macos-universal.dmg\n{HASH} *b.zip\nnot a line\n{HASH}  ../escape\n"));
-        assert_eq!(sums, [(HASH.to_string(), "photocraft-0.5.0-macos-universal.dmg".to_string()), (HASH.to_string(), "b.zip".to_string())]);
-        assert_eq!(tag_from_redirect("https://github.com/storytold/photocraft/releases/tag/v0.5.0", REPO).as_deref(), Some("v0.5.0"));
-        assert_eq!(tag_from_redirect("https://github.com/storytold/photocraft/releases", REPO), None);
-        assert_eq!(tag_from_redirect("https://evil/storytold/photocraft/releases/tag/v1", REPO), None);
+        let sums = parse_sha256sums(&format!(
+            "{HASH}  photocraft-0.5.0-macos-universal.dmg\n{HASH} *b.zip\nnot a line\n{HASH}  ../escape\n"
+        ));
+        assert_eq!(
+            sums,
+            [
+                (
+                    HASH.to_string(),
+                    "photocraft-0.5.0-macos-universal.dmg".to_string()
+                ),
+                (HASH.to_string(), "b.zip".to_string())
+            ]
+        );
+        assert_eq!(
+            tag_from_redirect(
+                "https://github.com/storytold/photocraft/releases/tag/v0.5.0",
+                REPO
+            )
+            .as_deref(),
+            Some("v0.5.0")
+        );
+        assert_eq!(
+            tag_from_redirect("https://github.com/storytold/photocraft/releases", REPO),
+            None
+        );
+        assert_eq!(
+            tag_from_redirect("https://evil/storytold/photocraft/releases/tag/v1", REPO),
+            None
+        );
         let r = release_from_sums(REPO, "v0.5.0", &sums);
-        assert_eq!(r.assets[0].url, "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-macos-universal.dmg");
+        assert_eq!(
+            r.assets[0].url,
+            "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-macos-universal.dmg"
+        );
         assert_eq!(r.version, Some(Version::new(0, 5, 0)));
     }
 
