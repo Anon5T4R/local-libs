@@ -50,7 +50,9 @@ Write-Host 'gh secret list: 2/2 confirmados'
 
 # 5. pubkey do repo = pubkey do backup (requer o repo ja ter recebido o primeiro push)
 $ErrorActionPreference = 'Continue'
-$repoPub = gh api "repos/$Repo/contents/packaging/minisign.pub" -H 'Accept: application/vnd.github.raw' 2>&1 | Out-String
+# `Out-String` join lines with CRLF and gh's stdout is text: strip the CRs before comparing
+# byte-for-byte, or every repo looks divergent on Windows (CRLF vs the file's LF).
+$repoPub = (gh api "repos/$Repo/contents/packaging/minisign.pub" -H 'Accept: application/vnd.github.raw' 2>&1 | Out-String) -replace "`r", ''
 $ErrorActionPreference = 'Stop'
 if (-not $repoPub -or $repoPub -match 'Not Found|empty') {
   Write-Warning "packaging/minisign.pub ainda nao existe em $Repo (repo vazio/sem push?) - rode este script de novo APOS o primeiro push, antes da primeira release."
