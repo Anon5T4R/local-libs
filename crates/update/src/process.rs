@@ -59,12 +59,8 @@ pub fn run(program: &str, args: &[&str], timeout: Duration) -> Result<String, St
 
 /// Runs a configured helper with bounded output and a timeout.
 pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result<String, String> {
-    let mut child = cmd
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("couldn't start {program} ({e})"))?;
+    let mut child =
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't start {program} ({e})"))?;
     // Read both pipes while it runs, so a chatty helper can't block on a full one.
     let (stdout, stderr) = (read_all(child.stdout.take()), read_all(child.stderr.take()));
     let start = Instant::now();
@@ -75,10 +71,7 @@ pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(format!(
-                    "{program} didn't finish within {} seconds",
-                    timeout.as_secs()
-                ));
+                return Err(format!("{program} didn't finish within {} seconds", timeout.as_secs()));
             }
         }
     };
@@ -86,37 +79,25 @@ pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result
     // under the same deadline; on timeout the readers detach, as in the child timeout path.
     while !stdout.is_finished() || !stderr.is_finished() {
         if start.elapsed() >= timeout {
-            return Err(format!(
-                "{program} didn't finish within {} seconds",
-                timeout.as_secs()
-            ));
+            return Err(format!("{program} didn't finish within {} seconds", timeout.as_secs()));
         }
         std::thread::sleep(Duration::from_millis(15));
     }
-    let text = |pipe: std::thread::JoinHandle<Vec<u8>>| {
-        String::from_utf8_lossy(&pipe.join().unwrap_or_default()).into_owned()
-    };
+    let text = |pipe: std::thread::JoinHandle<Vec<u8>>| String::from_utf8_lossy(&pipe.join().unwrap_or_default()).into_owned();
     let (out, err) = (text(stdout), text(stderr));
     if status.success() {
         return Ok(out);
     }
     let reason = err.trim();
-    Err(if reason.is_empty() {
-        format!("{program} failed ({status})")
-    } else {
-        reason.to_string()
-    })
+    Err(if reason.is_empty() { format!("{program} failed ({status})") } else { reason.to_string() })
 }
 
 /// Captures at most 8 MB of a child's pipe and drains the rest on its own thread.
-fn read_all<R: std::io::Read + Send + 'static>(
-    pipe: Option<R>,
-) -> std::thread::JoinHandle<Vec<u8>> {
+fn read_all<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {
         let mut out = Vec::new();
         if let Some(mut pipe) = pipe {
-            let _ =
-                std::io::Read::read_to_end(&mut std::io::Read::take(&mut pipe, 8 << 20), &mut out);
+            let _ = std::io::Read::read_to_end(&mut std::io::Read::take(&mut pipe, 8 << 20), &mut out);
             // Keep reading without retaining more output: closing a full pipe early can make a
             // successful helper fail with a broken pipe (SIGPIPE on Unix).
             let _ = std::io::copy(&mut pipe, &mut std::io::sink());
@@ -127,12 +108,7 @@ fn read_all<R: std::io::Read + Send + 'static>(
 
 /// Starts `cmd` without waiting for it, and reaps it when it exits.
 pub fn spawn_detached(mut cmd: Command) -> Result<(), String> {
-    let mut child = cmd
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("couldn't start it ({e})"))?;
+    let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| format!("couldn't start it ({e})"))?;
     std::thread::spawn(move || {
         let _ = child.wait();
     });
@@ -144,14 +120,10 @@ pub fn spawn_detached(mut cmd: Command) -> Result<(), String> {
 #[cfg(windows)]
 pub fn wait_for_exit(pid: u32, timeout: Duration) -> bool {
     use winsafe::{HPROCESS, co};
-    let Ok(process) = HPROCESS::OpenProcess(co::PROCESS::SYNCHRONIZE, false, pid) else {
-        return true;
-    };
+    let Ok(process) = HPROCESS::OpenProcess(co::PROCESS::SYNCHRONIZE, false, pid) else { return true };
     // u32::MAX would mean INFINITE.
     let ms = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX - 1);
-    process
-        .WaitForSingleObject(Some(ms))
-        .is_ok_and(|w| w == co::WAIT::OBJECT_0)
+    process.WaitForSingleObject(Some(ms)).is_ok_and(|w| w == co::WAIT::OBJECT_0)
 }
 
 /// Whether this process is running inside a Flatpak container sandbox.
@@ -184,12 +156,7 @@ pub fn capture_flatpak(args: &[&str], timeout: Duration) -> Option<String> {
 /// Whether Flatpak is available on the machine (or on the host when sandboxed).
 pub fn is_flatpak_available() -> bool {
     if in_sandbox() {
-        capture(
-            "flatpak-spawn",
-            &["--host", "flatpak", "--version"],
-            Duration::from_secs(3),
-        )
-        .is_some()
+        capture("flatpak-spawn", &["--host", "flatpak", "--version"], Duration::from_secs(3)).is_some()
     } else {
         which_on_path("flatpak").is_some()
     }
@@ -197,9 +164,7 @@ pub fn is_flatpak_available() -> bool {
 
 fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join(name))
-        .find(|p| p.is_file())
+    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 /// Starts an app binary from its own folder.
@@ -271,12 +236,7 @@ fn open_and_wait_success(target: &str, timeout: Duration) -> bool {
     if cfg!(windows) {
         return spawn_detached(cmd).is_ok();
     }
-    let mut child = match cmd
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
+    let mut child = match cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
         Ok(c) => c,
         Err(e) => {
             log::warn!("couldn't start the opener for {target}: {e}");
@@ -320,8 +280,7 @@ fn reveal_in_explorer(path: &Path) -> Result<(), String> {
     // (`C:\Program Files\...`), and Explorer then ignores the switch and opens Documents.
     // A quote in the path would end the quoted part early and let the rest reach Explorer as
     // switches; no Windows path has one, so refuse it.
-    let arg = explorer_select_arg(path)
-        .ok_or_else(|| format!("{} isn't a usable path", path.display()))?;
+    let arg = explorer_select_arg(path).ok_or_else(|| format!("{} isn't a usable path", path.display()))?;
     cmd.raw_arg(arg);
     spawn_detached(cmd)
 }
@@ -349,32 +308,18 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
 pub fn is_running(path: &Path) -> bool {
     if cfg!(windows) {
-        let Some(name) = path.file_name().and_then(OsStr::to_str) else {
-            return false;
-        };
+        let Some(name) = path.file_name().and_then(OsStr::to_str) else { return false };
         let filter = format!("IMAGENAME eq {name}");
-        let Ok(tasklist) = windows_system_program(r"System32\tasklist.exe") else {
-            return false;
-        };
+        let Ok(tasklist) = windows_system_program(r"System32\tasklist.exe") else { return false };
         let mut cmd = command(tasklist);
         cmd.args(["/FI", &filter, "/NH", "/FO", "CSV"]);
-        run_command(cmd, "tasklist", Duration::from_secs(5))
-            .ok()
-            .is_some_and(|out| {
-                out.to_ascii_lowercase()
-                    .contains(&name.to_ascii_lowercase())
-            })
+        run_command(cmd, "tasklist", Duration::from_secs(5)).ok().is_some_and(|out| out.to_ascii_lowercase().contains(&name.to_ascii_lowercase()))
     } else {
         let Some(p) = path.to_str() else { return false };
         let pattern = pgrep_pattern(p);
         // pgrep exits 0 when something matches; it never matches itself.
         if in_sandbox() {
-            capture(
-                "flatpak-spawn",
-                &["--host", "pgrep", "-f", "--", &pattern],
-                Duration::from_secs(5),
-            )
-            .is_some()
+            capture("flatpak-spawn", &["--host", "pgrep", "-f", "--", &pattern], Duration::from_secs(5)).is_some()
         } else {
             capture("pgrep", &["-f", "--", &pattern], Duration::from_secs(5)).is_some()
         }
@@ -396,10 +341,7 @@ fn windows_system_program(relative: &str) -> Result<PathBuf, String> {
 fn pgrep_pattern(path: &str) -> String {
     let mut pattern = String::with_capacity(path.len());
     for c in path.chars() {
-        if matches!(
-            c,
-            '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\'
-        ) {
+        if matches!(c, '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\') {
             pattern.push('\\');
         }
         pattern.push(c);
@@ -428,9 +370,7 @@ mod tests {
                 .unwrap();
             let mut probe = Self(child);
             let mut ready = String::new();
-            BufReader::new(probe.0.stdout.take().unwrap())
-                .read_line(&mut ready)
-                .unwrap();
+            BufReader::new(probe.0.stdout.take().unwrap()).read_line(&mut ready).unwrap();
             assert_eq!(ready, "ready\n");
             probe
         }
@@ -448,22 +388,10 @@ mod tests {
         let root = format!("/tmp/artcraft-launcher-process-{}", std::process::id());
         for (actual, requested, expected) in [
             ("plain/PhotoCraft.app", "plain/PhotoCraft.app", true),
-            (
-                "Apps (work)/PhotoCraft.app",
-                "Apps (work)/PhotoCraft.app",
-                true,
-            ),
-            (
-                "Apps [work]/PhotoCraft.app",
-                "Apps [work]/PhotoCraft.app",
-                true,
-            ),
+            ("Apps (work)/PhotoCraft.app", "Apps (work)/PhotoCraft.app", true),
+            ("Apps [work]/PhotoCraft.app", "Apps [work]/PhotoCraft.app", true),
             ("other/PhotoCraftXapp", "other/PhotoCraft.app", false),
-            (
-                "symbols/应用.^$*+?()[]{}|\\.app",
-                "symbols/应用.^$*+?()[]{}|\\.app",
-                true,
-            ),
+            ("symbols/应用.^$*+?()[]{}|\\.app", "symbols/应用.^$*+?()[]{}|\\.app", true),
         ] {
             let actual = format!("{root}/{actual}");
             let requested = format!("{root}/{requested}");
@@ -479,70 +407,37 @@ mod run_tests {
 
     /// A shell command line, for the platform's shell.
     fn shell(script: &str) -> (&'static str, [&str; 2]) {
-        if cfg!(windows) {
-            ("cmd", ["/C", script])
-        } else {
-            ("/bin/sh", ["-c", script])
-        }
+        if cfg!(windows) { ("cmd", ["/C", script]) } else { ("/bin/sh", ["-c", script]) }
     }
 
     #[cfg(windows)]
     #[test]
     fn waiting_for_a_process_ends_when_it_exits() {
-        let mut child = Command::new("ping")
-            .args(["-n", "3", "127.0.0.1"])
-            .stdout(Stdio::null())
-            .spawn()
-            .unwrap();
-        assert!(
-            !wait_for_exit(child.id(), Duration::from_millis(200)),
-            "it's still running"
-        );
-        assert!(
-            wait_for_exit(child.id(), Duration::from_secs(30)),
-            "it has exited"
-        );
+        let mut child = Command::new("ping").args(["-n", "3", "127.0.0.1"]).stdout(Stdio::null()).spawn().unwrap();
+        assert!(!wait_for_exit(child.id(), Duration::from_millis(200)), "it's still running");
+        assert!(wait_for_exit(child.id(), Duration::from_secs(30)), "it has exited");
         child.wait().unwrap();
     }
 
     #[test]
     fn a_failing_helper_reports_its_own_error() {
-        let (program, args) = shell(if cfg!(windows) {
-            "echo no such image 1>&2 & exit /b 3"
-        } else {
-            "echo no such image >&2; exit 3"
-        });
-        assert_eq!(
-            run(program, &args, Duration::from_secs(30)),
-            Err("no such image".into())
-        );
+        let (program, args) = shell(if cfg!(windows) { "echo no such image 1>&2 & exit /b 3" } else { "echo no such image >&2; exit 3" });
+        assert_eq!(run(program, &args, Duration::from_secs(30)), Err("no such image".into()));
         assert_eq!(capture(program, &args, Duration::from_secs(30)), None);
     }
 
     #[cfg(unix)]
     #[test]
     fn successful_helpers_can_write_past_the_stdout_capture_limit() {
-        let out = run(
-            "/bin/sh",
-            &["-c", "head -c 9437184 /dev/zero"],
-            Duration::from_secs(10),
-        )
-        .unwrap();
+        let out = run("/bin/sh", &["-c", "head -c 9437184 /dev/zero"], Duration::from_secs(10)).unwrap();
         assert_eq!(out.len(), 8 << 20);
     }
 
     #[cfg(unix)]
     #[test]
     fn successful_helpers_can_write_past_the_stderr_capture_limit() {
-        let out = run(
-            "/bin/sh",
-            &["-c", "head -c 9437184 /dev/zero >&2"],
-            Duration::from_secs(10),
-        );
-        assert!(
-            out.is_ok(),
-            "the helper should finish without a broken pipe"
-        );
+        let out = run("/bin/sh", &["-c", "head -c 9437184 /dev/zero >&2"], Duration::from_secs(10));
+        assert!(out.is_ok(), "the helper should finish without a broken pipe");
         assert!(out.unwrap().is_empty());
     }
 
@@ -561,10 +456,7 @@ mod run_tests {
         let err = run(program, &args, Duration::from_secs(30)).unwrap_err();
         assert!(err.starts_with(&format!("{program} failed")), "{err}");
         let (program, args) = shell("echo hello");
-        assert_eq!(
-            run(program, &args, Duration::from_secs(30)).map(|out| out.trim().to_string()),
-            Ok("hello".into())
-        );
+        assert_eq!(run(program, &args, Duration::from_secs(30)).map(|out| out.trim().to_string()), Ok("hello".into()));
     }
 }
 
@@ -576,44 +468,27 @@ mod explorer_tests {
     #[test]
     fn system_helpers_use_absolute_system_paths() {
         let root = PathBuf::from(std::env::var_os("SystemRoot").unwrap());
-        assert_eq!(
-            windows_system_program("explorer.exe").unwrap(),
-            root.join("explorer.exe")
-        );
-        assert_eq!(
-            windows_system_program(r"System32\tasklist.exe").unwrap(),
-            root.join(r"System32\tasklist.exe")
-        );
+        assert_eq!(windows_system_program("explorer.exe").unwrap(), root.join("explorer.exe"));
+        assert_eq!(windows_system_program(r"System32\tasklist.exe").unwrap(), root.join(r"System32\tasklist.exe"));
     }
 
     #[test]
     fn explorer_select_quotes_only_the_path() {
         let arg = explorer_select_arg(Path::new(r"C:\Program Files\PhotoCraft\photocraft.exe"));
-        assert_eq!(
-            arg.unwrap(),
-            r#"/select,"C:\Program Files\PhotoCraft\photocraft.exe""#
-        );
+        assert_eq!(arg.unwrap(), r#"/select,"C:\Program Files\PhotoCraft\photocraft.exe""#);
     }
 
     #[test]
     fn explorer_select_without_spaces() {
         let arg = explorer_select_arg(Path::new(r"C:\Apps\photocraft.exe"));
         assert_eq!(arg.unwrap(), r#"/select,"C:\Apps\photocraft.exe""#);
-        assert_eq!(
-            explorer_select_arg(Path::new(r#"C:\Apps" /root,C:\x.exe"#)),
-            None
-        );
+        assert_eq!(explorer_select_arg(Path::new(r#"C:\Apps" /root,C:\x.exe"#)), None);
     }
 
     #[test]
     fn explorer_select_uses_backslashes() {
-        let arg = explorer_select_arg(Path::new(
-            "C:/Users/A B/AppData/Local/ArtCraft Launcher/apps/photocraft.exe",
-        ));
-        assert_eq!(
-            arg.unwrap(),
-            r#"/select,"C:\Users\A B\AppData\Local\ArtCraft Launcher\apps\photocraft.exe""#
-        );
+        let arg = explorer_select_arg(Path::new("C:/Users/A B/AppData/Local/ArtCraft Launcher/apps/photocraft.exe"));
+        assert_eq!(arg.unwrap(), r#"/select,"C:\Users\A B\AppData\Local\ArtCraft Launcher\apps\photocraft.exe""#);
     }
 }
 
@@ -625,14 +500,7 @@ mod inherited_pipe_tests {
     fn fixture_args(name: &str, marker: &str) -> Vec<String> {
         let (_, module) = module_path!().split_once("::").unwrap();
         // libtest accepts arbitrary skip filters; this one carries our private fixture path.
-        vec![
-            "--ignored".into(),
-            "--exact".into(),
-            format!("{module}::{name}"),
-            "--nocapture".into(),
-            "--skip".into(),
-            marker.into(),
-        ]
+        vec!["--ignored".into(), "--exact".into(), format!("{module}::{name}"), "--nocapture".into(), "--skip".into(), marker.into()]
     }
 
     fn fixture_dir() -> std::path::PathBuf {
@@ -664,20 +532,14 @@ mod inherited_pipe_tests {
     #[ignore = "self-spawned subprocess fixture"]
     fn pipe_parent() {
         let dir = fixture_dir();
-        let descendant = command(std::env::current_exe().unwrap())
-            .args(fixture_args("pipe_holder", dir.to_str().unwrap()))
-            .spawn()
-            .unwrap();
+        let descendant = command(std::env::current_exe().unwrap()).args(fixture_args("pipe_holder", dir.to_str().unwrap())).spawn().unwrap();
         std::fs::write(dir.join("spawned"), []).unwrap();
         // No deadline of its own: run() kills this process at its deadline if it is too slow.
         let start = Instant::now();
         while !dir.join("ready").exists() && start.elapsed() < HOLD {
             std::thread::sleep(Duration::from_millis(10));
         }
-        assert!(
-            dir.join("ready").exists(),
-            "descendant did not fill both captured pipes"
-        );
+        assert!(dir.join("ready").exists(), "descendant did not fill both captured pipes");
         std::fs::write(dir.join("parent-returning"), []).unwrap();
         // Dropping Child leaves the finite fixture running with inherited stdout/stderr.
         drop(descendant);
@@ -695,8 +557,7 @@ mod inherited_pipe_tests {
                 return;
             }
             let start = Instant::now();
-            while !self.0.path().join("done").exists() && start.elapsed() < Duration::from_secs(30)
-            {
+            while !self.0.path().join("done").exists() && start.elapsed() < Duration::from_secs(30) {
                 std::thread::sleep(Duration::from_millis(10));
             }
         }
@@ -716,16 +577,11 @@ mod inherited_pipe_tests {
             let start = Instant::now();
             let result = run(exe.to_str().unwrap(), &args, deadline);
             let elapsed = start.elapsed();
-            if !holder.0.path().join("parent-returning").exists()
-                && deadline < Duration::from_secs(16)
-            {
+            if !holder.0.path().join("parent-returning").exists() && deadline < Duration::from_secs(16) {
                 deadline *= 4;
                 continue;
             }
-            assert!(
-                holder.0.path().join("parent-returning").exists(),
-                "direct child did not exit its fixture within {deadline:?}"
-            );
+            assert!(holder.0.path().join("parent-returning").exists(), "direct child did not exit its fixture within {deadline:?}");
             assert!(
                 matches!(&result, Err(error) if error.contains("didn't finish within")),
                 "expected a pipe deadline error; helper returned success: {}, elapsed: {elapsed:?}",
@@ -733,10 +589,7 @@ mod inherited_pipe_tests {
             );
             // The descendant would hold the pipes for HOLD, far past this bound.
             assert!(deadline * 2 < HOLD);
-            assert!(
-                elapsed < deadline * 2,
-                "capture exceeded its caller deadline {deadline:?}: {elapsed:?}"
-            );
+            assert!(elapsed < deadline * 2, "capture exceeded its caller deadline {deadline:?}: {elapsed:?}");
             // The guard stops the finite descendant and waits for its completion marker on failures too.
             break;
         }

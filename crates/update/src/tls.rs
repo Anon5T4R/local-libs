@@ -30,31 +30,22 @@ pub fn status_line() -> String {
 /// negociou. Não é chamado em produção.
 pub fn probe_pure(host: &str) -> Result<String, String> {
     let provider = pure_provider();
-    let verifier = rustls_platform_verifier::Verifier::new(provider.clone())
-        .map_err(|e| format!("verifier: {e}"))?;
+    let verifier = rustls_platform_verifier::Verifier::new(provider.clone()).map_err(|e| format!("verifier: {e}"))?;
     let config = rustls::ClientConfig::builder_with_provider(provider)
         .with_protocol_versions(rustls::ALL_VERSIONS)
         .map_err(|e| format!("builder: {e}"))?
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(verifier))
         .with_no_client_auth();
-    let name = rustls::pki_types::ServerName::try_from(host.to_string())
-        .map_err(|e| format!("host inválido: {e}"))?;
-    let mut conn = rustls::ClientConnection::new(Arc::new(config), name)
-        .map_err(|e| format!("client: {e}"))?;
-    let mut sock =
-        std::net::TcpStream::connect((host, 443u16)).map_err(|e| format!("connect: {e}"))?;
+    let name = rustls::pki_types::ServerName::try_from(host.to_string()).map_err(|e| format!("host inválido: {e}"))?;
+    let mut conn = rustls::ClientConnection::new(Arc::new(config), name).map_err(|e| format!("client: {e}"))?;
+    let mut sock = std::net::TcpStream::connect((host, 443u16)).map_err(|e| format!("connect: {e}"))?;
     let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(15)));
     while conn.is_handshaking() {
-        conn.complete_io(&mut sock)
-            .map_err(|e| format!("handshake: {e}"))?;
+        conn.complete_io(&mut sock).map_err(|e| format!("handshake: {e}"))?;
     }
-    let version = conn
-        .protocol_version()
-        .map_or_else(|| "-".to_string(), |v| format!("{v:?}"));
-    let suite = conn
-        .negotiated_cipher_suite()
-        .map_or_else(|| "-".to_string(), |s| format!("{:?}", s.suite()));
+    let version = conn.protocol_version().map_or_else(|| "-".to_string(), |v| format!("{v:?}"));
+    let suite = conn.negotiated_cipher_suite().map_or_else(|| "-".to_string(), |s| format!("{:?}", s.suite()));
     Ok(format!("{version} {suite}"))
 }
 

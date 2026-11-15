@@ -19,10 +19,7 @@ pub const MARKER: &str = "X-ArtCraft-Launcher=true";
 /// The menu categories and the window class each app's own `.desktop` file declares.
 pub fn meta(app: &App) -> (&'static str, Option<&'static str>) {
     match app.id {
-        "photocraft" => (
-            "Graphics;2DGraphics;RasterGraphics;Photography;",
-            Some("photocraft"),
-        ),
+        "photocraft" => ("Graphics;2DGraphics;RasterGraphics;Photography;", Some("photocraft")),
         "pdfcraft" => ("Office;Viewer;", Some("pdfcraft")),
         "lightcraft" => ("Graphics;2DGraphics;RasterGraphics;Photography;", None),
         "filmcraft" => ("AudioVideo;Video;AudioVideoEditing;", None),
@@ -34,10 +31,7 @@ pub fn meta(app: &App) -> (&'static str, Option<&'static str>) {
         "gridcraft" => ("Office;Spreadsheet;", None),
         "cadcraft" => ("Graphics;Engineering;VectorGraphics;", None),
         "soundcraft" => ("AudioVideo;Audio;Midi;Mixer;Sequencer;Recorder;", None),
-        "figcraft" => (
-            "Graphics;2DGraphics;VectorGraphics;X-Design;",
-            Some("figcraft"),
-        ),
+        "figcraft" => ("Graphics;2DGraphics;VectorGraphics;X-Design;", Some("figcraft")),
         _ => ("Graphics;", None),
     }
 }
@@ -71,10 +65,7 @@ pub fn exec_quote(path: &Path) -> Option<String> {
 
 /// A localestring/string value: backslashes and line breaks escaped.
 fn value(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
+    s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t")
 }
 
 /// The entry for `app` installed as the AppImage `appimage`; `icon` when its icon is installed
@@ -91,10 +82,7 @@ pub fn render(app: &App, appimage: &Path, icon: bool) -> Option<String> {
     }
     text.push_str("Terminal=false\n");
     text.push_str(&format!("Categories={categories}\n"));
-    text.push_str(&format!(
-        "StartupWMClass={}\n",
-        wm_class.map_or_else(|| app.bundle_id(), str::to_string)
-    ));
+    text.push_str(&format!("StartupWMClass={}\n", wm_class.map_or_else(|| app.bundle_id(), str::to_string)));
     text.push_str(MARKER);
     text.push('\n');
     Some(text)
@@ -155,12 +143,7 @@ mod tests {
 
     #[test]
     fn writes_a_complete_entry() {
-        let text = render(
-            app("photocraft"),
-            Path::new("/home/ana/Applications/photocraft-0.6.0-linux-x86_64.AppImage"),
-            true,
-        )
-        .unwrap();
+        let text = render(app("photocraft"), Path::new("/home/ana/Applications/photocraft-0.6.0-linux-x86_64.AppImage"), true).unwrap();
         let expected = format!(
             "[Desktop Entry]\nType=Application\nName=PhotoCraft\nComment={}\n\
              Exec=\"/home/ana/Applications/photocraft-0.6.0-linux-x86_64.AppImage\" %F\n\
@@ -178,57 +161,26 @@ mod tests {
 
     #[test]
     fn quotes_exec_paths_per_the_spec() {
-        assert_eq!(
-            exec_quote(Path::new("/home/ana/My Apps/p.AppImage")).unwrap(),
-            "\"/home/ana/My Apps/p.AppImage\""
-        );
-        assert_eq!(
-            exec_quote(Path::new("/a/\"q\" $HOME `x`.AppImage")).unwrap(),
-            r#""/a/\\"q\\" \\$HOME \\`x\\`.AppImage""#
-        );
-        assert_eq!(
-            exec_quote(Path::new(r"/a\b/100%.AppImage")).unwrap(),
-            r#""/a\\\\b/100%%.AppImage""#
-        );
+        assert_eq!(exec_quote(Path::new("/home/ana/My Apps/p.AppImage")).unwrap(), "\"/home/ana/My Apps/p.AppImage\"");
+        assert_eq!(exec_quote(Path::new("/a/\"q\" $HOME `x`.AppImage")).unwrap(), r#""/a/\\"q\\" \\$HOME \\`x\\`.AppImage""#);
+        assert_eq!(exec_quote(Path::new(r"/a\b/100%.AppImage")).unwrap(), r#""/a\\\\b/100%%.AppImage""#);
         assert_eq!(exec_quote(Path::new("/a/line\nbreak.AppImage")), None);
         // The spec forbids `=` in the executable name or path, even quoted.
         assert_eq!(exec_quote(Path::new("/opt/artcraft=beta/app")), None);
-        assert!(
-            render(
-                app("photocraft"),
-                Path::new("/a/line\nbreak.AppImage"),
-                true
-            )
-            .is_none()
-        );
+        assert!(render(app("photocraft"), Path::new("/a/line\nbreak.AppImage"), true).is_none());
     }
 
     #[test]
     fn reads_back_the_program_it_wrote_and_the_apps_own_entries() {
-        for p in [
-            "/home/ana/My Apps/p.AppImage",
-            "/a/\"q\" $HOME `x`.AppImage",
-            r"/a\b/100%.AppImage",
-            "/plain.AppImage",
-        ] {
+        for p in ["/home/ana/My Apps/p.AppImage", "/a/\"q\" $HOME `x`.AppImage", r"/a\b/100%.AppImage", "/plain.AppImage"] {
             let text = render(app("gridcraft"), Path::new(p), false).unwrap();
-            assert_eq!(
-                exec_program(&text).map(PathBuf::from),
-                Some(PathBuf::from(p)),
-                "{p}"
-            );
+            assert_eq!(exec_program(&text).map(PathBuf::from), Some(PathBuf::from(p)), "{p}");
         }
         // PhotoCraft's AppRun writes its own entry, unmarked.
         let theirs = "[Desktop Entry]\nName=PhotoCraft\nExec=\"/home/ana/Applications/photocraft-0.5.0-linux-x86_64.AppImage\" %F\n";
-        assert_eq!(
-            exec_program(theirs).as_deref(),
-            Some("/home/ana/Applications/photocraft-0.5.0-linux-x86_64.AppImage")
-        );
+        assert_eq!(exec_program(theirs).as_deref(), Some("/home/ana/Applications/photocraft-0.5.0-linux-x86_64.AppImage"));
         assert!(!is_ours(theirs));
-        assert_eq!(
-            exec_program("[Desktop Entry]\nExec=photocraft %F\n").as_deref(),
-            Some("photocraft")
-        );
+        assert_eq!(exec_program("[Desktop Entry]\nExec=photocraft %F\n").as_deref(), Some("photocraft"));
         assert_eq!(exec_program("[Desktop Entry]\nName=x\n"), None);
     }
 }

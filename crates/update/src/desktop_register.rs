@@ -27,9 +27,7 @@ pub(crate) fn ensure_registered(app: &App, version: &str) {
     if crate::process::in_sandbox() {
         return; // Flatpak: the manifest owns the entry.
     }
-    let Some(target) = launch_target() else {
-        return;
-    };
+    let Some(target) = launch_target() else { return };
     let target = match target {
         LaunchTarget::AppImage(path) => {
             let appdir = std::env::var_os("APPDIR").map(PathBuf::from);
@@ -118,20 +116,14 @@ fn atomic_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
 const MARKER_DIR: &str = "craft-update";
 
 fn marker_path(data: &Path, app: &App) -> PathBuf {
-    data.join(MARKER_DIR)
-        .join(format!("desktop-{}.txt", app.id))
+    data.join(MARKER_DIR).join(format!("desktop-{}.txt", app.id))
 }
 
 /// `target_path\nversion\ndesktop_file\nicon_name`
 fn read_marker(data: &Path, app: &App) -> Option<(String, String, String, String)> {
     let t = std::fs::read_to_string(marker_path(data, app)).ok()?;
     let mut it = t.lines();
-    Some((
-        it.next()?.to_string(),
-        it.next()?.to_string(),
-        it.next()?.to_string(),
-        it.next()?.to_string(),
-    ))
+    Some((it.next()?.to_string(), it.next()?.to_string(), it.next()?.to_string(), it.next()?.to_string()))
 }
 
 fn write_marker(data: &Path, app: &App, target: &Path, version: &str, desktop: &str, icon: &str) {
@@ -139,10 +131,7 @@ fn write_marker(data: &Path, app: &App, target: &Path, version: &str, desktop: &
     if let Some(dir) = p.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let _ = atomic_write(
-        &p,
-        &format!("{}\n{version}\n{desktop}\n{icon}\n", target.display()),
-    );
+    let _ = atomic_write(&p, &format!("{}\n{version}\n{desktop}\n{icon}\n", target.display()));
 }
 
 /// Where the shipped desktop entry and icons live for this running copy:
@@ -172,9 +161,7 @@ fn discover_desktop(share: &Path, app: &App) -> Option<(String, String)> {
         if !name.ends_with(".desktop") {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(entry.path()) else {
-            continue;
-        };
+        let Ok(text) = std::fs::read_to_string(entry.path()) else { continue };
         let program = crate::desktop_entry::exec_program(&text);
         if let Some(p) = program.as_deref()
             && Path::new(p).file_name().is_some_and(|f| f == app.id)
@@ -187,11 +174,7 @@ fn discover_desktop(share: &Path, app: &App) -> Option<(String, String)> {
 }
 
 fn icon_of(desktop: &str) -> Option<String> {
-    desktop
-        .lines()
-        .find_map(|l| l.strip_prefix("Icon="))
-        .map(str::trim)
-        .map(str::to_string)
+    desktop.lines().find_map(|l| l.strip_prefix("Icon=")).map(str::trim).map(str::to_string)
 }
 
 /// Rewrites the program part of the `Exec` line, keeping the field codes
@@ -202,11 +185,7 @@ fn retarget_exec(text: &str, target: &Path) -> Option<String> {
     let mut done = false;
     for line in text.lines() {
         if !done && let Some(rest) = line.strip_prefix("Exec=") {
-            let args = rest
-                .split_whitespace()
-                .skip(1)
-                .collect::<Vec<_>>()
-                .join(" ");
+            let args = rest.split_whitespace().skip(1).collect::<Vec<_>>().join(" ");
             out.push_str("Exec=");
             out.push_str(&quoted);
             if !args.is_empty() {
@@ -249,19 +228,14 @@ fn copy_icons(share: &Path, data: &Path, icon: &str) {
         return;
     }
     let src_root = share.join("icons/hicolor");
-    let Ok(levels) = std::fs::read_dir(&src_root) else {
-        return;
-    };
+    let Ok(levels) = std::fs::read_dir(&src_root) else { return };
     for level in levels.flatten() {
         // hicolor/<size>/apps/<icon>.{png,svg}
         let apps = level.path().join("apps");
         for ext in ["png", "svg", "svgz"] {
             let src = apps.join(format!("{icon}.{ext}"));
             if src.is_file() {
-                let dst = data
-                    .join("icons/hicolor")
-                    .join(level.file_name())
-                    .join("apps");
+                let dst = data.join("icons/hicolor").join(level.file_name()).join("apps");
                 let _ = std::fs::create_dir_all(&dst);
                 let _ = atomic_copy(&src, &dst.join(format!("{icon}.{ext}")));
             }
@@ -274,20 +248,13 @@ fn remove_entry(data: &Path, desktop: &str, icon: &str) {
     if let Ok(levels) = std::fs::read_dir(data.join("icons/hicolor")) {
         for level in levels.flatten() {
             for ext in ["png", "svg", "svgz"] {
-                let _ =
-                    std::fs::remove_file(level.path().join("apps").join(format!("{icon}.{ext}")));
+                let _ = std::fs::remove_file(level.path().join("apps").join(format!("{icon}.{ext}")));
             }
         }
     }
 }
 
-fn ensure_registered_in(
-    app: &App,
-    version: &str,
-    target: &Path,
-    appdir: Option<&Path>,
-    data: &Path,
-) -> Result<(), String> {
+fn ensure_registered_in(app: &App, version: &str, target: &Path, appdir: Option<&Path>, data: &Path) -> Result<(), String> {
     // Self-cleaning: our previous target is gone — the user deleted or moved
     // the file away from us. Remove the entry we wrote (only ours).
     let mut old: Option<(String, String, String, String)> = read_marker(data, app);
@@ -337,9 +304,7 @@ fn ensure_registered_in(
         {
             for level in levels.flatten() {
                 for ext in ["png", "svg", "svgz"] {
-                    let _ = std::fs::remove_file(
-                        level.path().join("apps").join(format!("{old_icon}.{ext}")),
-                    );
+                    let _ = std::fs::remove_file(level.path().join("apps").join(format!("{old_icon}.{ext}")));
                 }
             }
         }
@@ -371,23 +336,13 @@ mod tests {
         .unwrap();
         if with_icon {
             std::fs::create_dir_all(share.join("icons/hicolor/128x128/apps")).unwrap();
-            std::fs::write(
-                share
-                    .join("icons/hicolor/128x128/apps")
-                    .join(format!("{icon}.png")),
-                b"png",
-            )
-            .unwrap();
+            std::fs::write(share.join("icons/hicolor/128x128/apps").join(format!("{icon}.png")), b"png").unwrap();
         }
     }
 
     #[test]
     fn retargets_exec_keeping_field_codes() {
-        let out = retarget_exec(
-            "Exec=local-image %F\nIcon=x\n",
-            Path::new("/opt/a b/li.AppImage"),
-        )
-        .unwrap();
+        let out = retarget_exec("Exec=local-image %F\nIcon=x\n", Path::new("/opt/a b/li.AppImage")).unwrap();
         assert!(out.contains(r#"Exec="/opt/a b/li.AppImage" %F"#), "{out}");
         assert!(out.contains("Icon=x"));
     }
@@ -396,13 +351,7 @@ mod tests {
     fn discovers_entry_by_exec_program() {
         let d = tempfile::tempdir().unwrap();
         let share = d.path().join("share");
-        layout(
-            &share,
-            "com.local.localimage.desktop",
-            "local-image",
-            "local-image",
-            false,
-        );
+        layout(&share, "com.local.localimage.desktop", "local-image", "local-image", false);
         layout(&share, "outro.desktop", "other-bin", "other", false);
         let (name, icon) = discover_desktop(&share, app()).unwrap();
         assert_eq!(name, "com.local.localimage.desktop");
@@ -413,13 +362,7 @@ mod tests {
     fn registers_rewrites_and_cleans() {
         let d = tempfile::tempdir().unwrap();
         let share = d.path().join("share");
-        layout(
-            &share,
-            "local-image.desktop",
-            "local-image",
-            "local-image",
-            true,
-        );
+        layout(&share, "local-image.desktop", "local-image", "local-image", true);
         let data = d.path().join("data");
         let a = d.path().join("Apps/local-image");
         let b = d.path().join("Elsewhere/local-image");
@@ -432,10 +375,7 @@ mod tests {
         ensure_registered_in(app(), "1.0", &a, None, &data).unwrap();
         let entry = std::fs::read_to_string(data.join("applications/local-image.desktop")).unwrap();
         assert!(entry.contains(&a.display().to_string()));
-        assert!(
-            data.join("icons/hicolor/128x128/apps/local-image.png")
-                .is_file()
-        );
+        assert!(data.join("icons/hicolor/128x128/apps/local-image.png").is_file());
         assert!(marker_path(&data, app()).is_file());
 
         // Same target+version: still there (fast path, nothing to assert but no error).
@@ -448,20 +388,9 @@ mod tests {
 
         // Old path gone: everything we wrote is removed.
         std::fs::remove_file(&b).unwrap();
-        ensure_registered_in(
-            app(),
-            "1.1",
-            &d.path().join("gone/local-image"),
-            None,
-            &data,
-        )
-        .unwrap();
+        ensure_registered_in(app(), "1.1", &d.path().join("gone/local-image"), None, &data).unwrap();
         assert!(!data.join("applications/local-image.desktop").exists());
-        assert!(
-            !data
-                .join("icons/hicolor/128x128/apps/local-image.png")
-                .exists()
-        );
+        assert!(!data.join("icons/hicolor/128x128/apps/local-image.png").exists());
         assert!(!marker_path(&data, app()).exists());
     }
 
@@ -490,16 +419,8 @@ mod tests {
         // layout FHS: <root>/bin + <root>/share, instalado EM data
         std::fs::create_dir_all(data.join("applications")).unwrap();
         std::fs::create_dir_all(data.join("icons/hicolor/128x128/apps")).unwrap();
-        std::fs::write(
-            data.join("applications/local-image.desktop"),
-            "Exec=local-image %F\nIcon=local-image\n",
-        )
-        .unwrap();
-        std::fs::write(
-            data.join("icons/hicolor/128x128/apps/local-image.png"),
-            b"PNG-BYTES",
-        )
-        .unwrap();
+        std::fs::write(data.join("applications/local-image.desktop"), "Exec=local-image %F\nIcon=local-image\n").unwrap();
+        std::fs::write(data.join("icons/hicolor/128x128/apps/local-image.png"), b"PNG-BYTES").unwrap();
         ensure_registered_in(app(), "1.0", &bin, None, &data).unwrap();
         let icon = std::fs::read(data.join("icons/hicolor/128x128/apps/local-image.png")).unwrap();
         assert_eq!(icon, b"PNG-BYTES");
@@ -514,13 +435,7 @@ mod tests {
         let a = d.path().join("a");
         std::fs::create_dir_all(a.join("bin")).unwrap();
         std::fs::write(a.join("bin/local-image"), b"bin").unwrap();
-        layout(
-            &a.join("share"),
-            "local-image.desktop",
-            "local-image",
-            "local-image",
-            true,
-        );
+        layout(&a.join("share"), "local-image.desktop", "local-image", "local-image", true);
         ensure_registered_in(app(), "1.0", &a.join("bin/local-image"), None, &data).unwrap();
         let mut leftovers = Vec::new();
         for e in walk_files(&data) {
@@ -530,10 +445,7 @@ mod tests {
         }
         assert!(leftovers.is_empty(), "sobrou tmp: {leftovers:?}");
         // e o ícone copiado chegou inteiro
-        assert!(
-            data.join("icons/hicolor/128x128/apps/local-image.png")
-                .is_file()
-        );
+        assert!(data.join("icons/hicolor/128x128/apps/local-image.png").is_file());
     }
 
     fn walk_files(dir: &Path) -> Vec<std::fs::DirEntry> {
@@ -570,16 +482,9 @@ mod tests {
         ensure_registered_in(app(), "1.0", &bin, None, &data).unwrap();
         // este app ganha entrada própria (mínima, Exec absoluto)
         let mine = std::fs::read_to_string(data.join("applications/local-image.desktop")).unwrap();
-        assert!(
-            mine.contains(&bin.display().to_string()),
-            "entrada própria com Exec absoluto"
-        );
+        assert!(mine.contains(&bin.display().to_string()), "entrada própria com Exec absoluto");
         // a entrada alheia permanece exatamente como estava
-        assert_eq!(
-            std::fs::read_to_string(&foreign).unwrap(),
-            foreign_text,
-            "entrada de outro app deve ficar intacta"
-        );
+        assert_eq!(std::fs::read_to_string(&foreign).unwrap(), foreign_text, "entrada de outro app deve ficar intacta");
     }
 
     #[test]
@@ -592,34 +497,16 @@ mod tests {
         let a = d.path().join("a");
         std::fs::create_dir_all(a.join("bin")).unwrap();
         std::fs::write(a.join("bin/local-image"), b"bin").unwrap();
-        layout(
-            &a.join("share"),
-            "local-image.desktop",
-            "local-image",
-            "local-image",
-            true,
-        );
+        layout(&a.join("share"), "local-image.desktop", "local-image", "local-image", true);
         ensure_registered_in(app(), "1.0", &a.join("bin/local-image"), None, &data).unwrap();
         assert!(data.join("applications/local-image.desktop").is_file());
         // segunda cópia: layout rDNS (com.local.localimage.desktop)
         let b = d.path().join("b");
         std::fs::create_dir_all(b.join("bin")).unwrap();
         std::fs::write(b.join("bin/local-image"), b"bin").unwrap();
-        layout(
-            &b.join("share"),
-            "com.local.localimage.desktop",
-            "local-image",
-            "com.local.localimage",
-            true,
-        );
+        layout(&b.join("share"), "com.local.localimage.desktop", "local-image", "com.local.localimage", true);
         ensure_registered_in(app(), "1.1", &b.join("bin/local-image"), None, &data).unwrap();
-        assert!(
-            data.join("applications/com.local.localimage.desktop")
-                .is_file()
-        );
-        assert!(
-            !data.join("applications/local-image.desktop").exists(),
-            "entrada antiga deve sumir"
-        );
+        assert!(data.join("applications/com.local.localimage.desktop").is_file());
+        assert!(!data.join("applications/local-image.desktop").exists(), "entrada antiga deve sumir");
     }
 }

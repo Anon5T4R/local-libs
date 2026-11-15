@@ -66,14 +66,10 @@ pub enum Choice {
 impl Pins {
     /// The shared file (see the module notes), or the one [`PATH_ENV`] names.
     pub fn default_path() -> Option<PathBuf> {
-        if let Some(path) = std::env::var_os(PATH_ENV)
-            .map(PathBuf::from)
-            .filter(|p| p.is_absolute())
-        {
+        if let Some(path) = std::env::var_os(PATH_ENV).map(PathBuf::from).filter(|p| p.is_absolute()) {
             return Some(path);
         }
-        crate::folders::host_data_local_dir()
-            .map(|d| d.join("ArtCraft").join("versions").join("versions.json"))
+        crate::folders::host_data_local_dir().map(|d| d.join("ArtCraft").join("versions").join("versions.json"))
     }
 
     /// Reads `path`. A missing or damaged file reads as empty: every app follows stable releases.
@@ -82,20 +78,14 @@ impl Pins {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Self::default(),
             Err(e) => {
-                log::warn!(
-                    "couldn't read {} ({e}); every app follows stable releases",
-                    path.display()
-                );
+                log::warn!("couldn't read {} ({e}); every app follows stable releases", path.display());
                 return Self::default();
             }
         };
         match serde_json::from_str::<File>(&text) {
             Ok(file) => Self { apps: file.apps },
             Err(e) => {
-                log::warn!(
-                    "{} is damaged ({e}); every app follows stable releases",
-                    path.display()
-                );
+                log::warn!("{} is damaged ({e}); every app follows stable releases", path.display());
                 Self::default()
             }
         }
@@ -103,18 +93,13 @@ impl Pins {
 
     /// Reads the default file (see [`Self::default_path`]).
     pub fn load_default() -> Self {
-        Self::default_path()
-            .map(|p| Self::load(&p))
-            .unwrap_or_default()
+        Self::default_path().map(|p| Self::load(&p)).unwrap_or_default()
     }
 
     /// Writes `path` in one step, so a reader never sees half a file.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        let file = File {
-            apps: self.apps.clone(),
-        };
-        let text = serde_json::to_string_pretty(&file)
-            .map_err(|e| format!("couldn't encode the version choices ({e})"))?;
+        let file = File { apps: self.apps.clone() };
+        let text = serde_json::to_string_pretty(&file).map_err(|e| format!("couldn't encode the version choices ({e})"))?;
         crate::paths::write_atomic(path, text.as_bytes())
     }
 
@@ -157,11 +142,7 @@ impl Pins {
     pub fn tracks(&self) -> impl Iterator<Item = (&str, VersionTrack)> {
         self.apps
             .iter()
-            .filter_map(|(id, raw)| {
-                serde_json::from_value(raw.clone())
-                    .ok()
-                    .map(|t| (id.as_str(), t))
-            })
+            .filter_map(|(id, raw)| serde_json::from_value(raw.clone()).ok().map(|t| (id.as_str(), t)))
             .filter(|(_, track)| *track != VersionTrack::Stable)
     }
 }
@@ -196,10 +177,7 @@ mod tests {
         let read = Pins::load(&path);
         assert_eq!(read, pins);
         assert_eq!(read.choice("pdfcraft"), Choice::Managed(pinned("v0.13.0")));
-        assert_eq!(
-            read.choice("photocraft"),
-            Choice::Managed(VersionTrack::Nightly)
-        );
+        assert_eq!(read.choice("photocraft"), Choice::Managed(VersionTrack::Nightly));
         assert_eq!(read.choice("wordcraft"), Choice::Stable);
         assert_eq!(read.tracks().count(), 2);
     }
@@ -223,32 +201,21 @@ mod tests {
         assert_eq!(pins.track("filmcraft"), Some(VersionTrack::Nightly));
         assert_eq!(pins.choice("wordcraft"), Choice::Stable);
         let listed: Vec<&str> = pins.tracks().map(|(id, _)| id).collect();
-        assert_eq!(
-            listed,
-            ["filmcraft", "pdfcraft"],
-            "an explicit Stable entry is not listed"
-        );
+        assert_eq!(listed, ["filmcraft", "pdfcraft"], "an explicit Stable entry is not listed");
     }
 
     #[test]
     fn an_entry_from_a_newer_launcher_is_left_to_the_launcher_and_kept_on_save() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("versions.json");
-        std::fs::write(
-            &path,
-            r#"{"apps":{"pdfcraft":{"Beta":{"since":"v0.20.0"}}}}"#,
-        )
-        .unwrap();
+        std::fs::write(&path, r#"{"apps":{"pdfcraft":{"Beta":{"since":"v0.20.0"}}}}"#).unwrap();
         let mut pins = Pins::load(&path);
         assert_eq!(pins.choice("pdfcraft"), Choice::Unknown);
         assert_eq!(pins.track("pdfcraft"), None);
         pins.set("wordcraft", &pinned("v1.0.0"));
         pins.save(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            text.contains("Beta") && text.contains("v0.20.0"),
-            "kept: {text}"
-        );
+        assert!(text.contains("Beta") && text.contains("v0.20.0"), "kept: {text}");
         assert_eq!(Pins::load(&path).choice("pdfcraft"), Choice::Unknown);
     }
 
@@ -260,19 +227,10 @@ mod tests {
         }
         if let Some(path) = Pins::default_path() {
             assert!(path.is_absolute());
-            assert_eq!(
-                path.file_name().and_then(|n| n.to_str()),
-                Some("versions.json")
-            );
+            assert_eq!(path.file_name().and_then(|n| n.to_str()), Some("versions.json"));
             // The folder is the one the Flatpak grant names, under the host's data folder.
-            let granted = FLATPAK_GRANT
-                .strip_prefix("--filesystem=xdg-data/")
-                .and_then(|g| g.strip_suffix(":ro"))
-                .unwrap_or_default();
-            let expected = granted.split('/').fold(
-                crate::folders::host_data_local_dir().unwrap_or_default(),
-                |p, part| p.join(part),
-            );
+            let granted = FLATPAK_GRANT.strip_prefix("--filesystem=xdg-data/").and_then(|g| g.strip_suffix(":ro")).unwrap_or_default();
+            let expected = granted.split('/').fold(crate::folders::host_data_local_dir().unwrap_or_default(), |p, part| p.join(part));
             assert_eq!(path.parent(), Some(expected.as_path()), "{FLATPAK_GRANT}");
         }
     }

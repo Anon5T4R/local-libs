@@ -46,45 +46,32 @@ pub(crate) fn verify_with(pubkeys: &[&str], path: &Path, sig_text: &str) -> Resu
 
 fn verify_one(pk: &PublicKey, sig: &Signature, path: &Path) -> Result<(), String> {
     if let Ok(mut verifier) = pk.verify_stream(sig) {
-        let mut file =
-            std::fs::File::open(path).map_err(|e| format!("couldn't open the file ({e})"))?;
+        let mut file = std::fs::File::open(path).map_err(|e| format!("couldn't open the file ({e})"))?;
         let mut buf = [0u8; 64 * 1024];
         loop {
-            let n = file
-                .read(&mut buf)
-                .map_err(|e| format!("couldn't read the file ({e})"))?;
+            let n = file.read(&mut buf).map_err(|e| format!("couldn't read the file ({e})"))?;
             if n == 0 {
                 break;
             }
             verifier.update(&buf[..n]);
         }
-        verifier
-            .finalize()
-            .map_err(|e| format!("signature doesn't match ({e})"))
+        verifier.finalize().map_err(|e| format!("signature doesn't match ({e})"))
     } else {
         let data = std::fs::read(path).map_err(|e| format!("couldn't read the file ({e})"))?;
-        pk.verify(&data, sig, false)
-            .map_err(|e| format!("signature doesn't match ({e})"))
+        pk.verify(&data, sig, false).map_err(|e| format!("signature doesn't match ({e})"))
     }
 }
 
 /// Advisory signature check for a downloaded asset (transitional policy: log, never block).
 pub(crate) fn check(release: &Release, asset: &Asset, dest: &Path, http: &Http) {
     let Some(sig) = release.minisig_asset(&asset.name) else {
-        log::warn!(
-            "update signature missing for {} (release {} predates suite signing)",
-            asset.name,
-            release.tag
-        );
+        log::warn!("update signature missing for {} (release {} predates suite signing)", asset.name, release.tag);
         return;
     };
     let text = match http.get_text(&sig.url) {
         Ok(Some(text)) => text,
         Ok(None) => {
-            log::warn!(
-                "update signature for {} is listed but not downloadable",
-                asset.name
-            );
+            log::warn!("update signature for {} is listed but not downloadable", asset.name);
             return;
         }
         Err(e) => {
@@ -94,11 +81,7 @@ pub(crate) fn check(release: &Release, asset: &Asset, dest: &Path, http: &Http) 
     };
     match verify_with(SUITE_PUBKEYS, dest, &text) {
         Ok(()) => log::info!("update signature verified for {}", asset.name),
-        Err(e) => log::error!(
-            "update signature INVALID for {}: {} — proceeding only under the transitional policy",
-            asset.name,
-            e
-        ),
+        Err(e) => log::error!("update signature INVALID for {}: {} — proceeding only under the transitional policy", asset.name, e),
     }
 }
 
@@ -115,9 +98,7 @@ mod tests {
     const WRONG_KEY_SIG: &str = include_str!("../tests/fixtures/minisign/sample-wrong.txt.minisig");
 
     fn fixture(name: &str) -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/minisign")
-            .join(name)
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/minisign").join(name)
     }
 
     #[test]
@@ -135,14 +116,7 @@ mod tests {
     #[test]
     fn rejects_a_signature_from_another_key_but_rotations_accept_it() {
         assert!(verify_with(&[FIXTURE_PUB], &fixture("sample.txt"), WRONG_KEY_SIG).is_err());
-        assert!(
-            verify_with(
-                &[FIXTURE_PUB, OTHER_PUB],
-                &fixture("sample.txt"),
-                WRONG_KEY_SIG
-            )
-            .is_ok()
-        );
+        assert!(verify_with(&[FIXTURE_PUB, OTHER_PUB], &fixture("sample.txt"), WRONG_KEY_SIG).is_ok());
     }
 
     #[test]
@@ -153,10 +127,7 @@ mod tests {
     #[test]
     fn suite_pubkeys_parse() {
         for key in SUITE_PUBKEYS {
-            assert!(
-                PublicKey::from_base64(key).is_ok(),
-                "SUITE_PUBKEYS entry {key} must parse"
-            );
+            assert!(PublicKey::from_base64(key).is_ok(), "SUITE_PUBKEYS entry {key} must parse");
         }
     }
 }

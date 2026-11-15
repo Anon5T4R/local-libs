@@ -33,12 +33,7 @@ pub fn parse_dpkg(text: &str) -> Vec<(String, String)> {
 
 /// `rpm -qa --qf '%{NAME}|%{VERSION}\n'`.
 pub fn parse_rpm(text: &str) -> Vec<(String, String)> {
-    text.lines()
-        .filter_map(|line| {
-            line.split_once('|')
-                .map(|(n, v)| (n.to_string(), v.to_string()))
-        })
-        .collect()
+    text.lines().filter_map(|line| line.split_once('|').map(|(n, v)| (n.to_string(), v.to_string()))).collect()
 }
 
 /// `pacman -Q`: `name version` per line.
@@ -65,13 +60,7 @@ pub fn parse_flatpak_list(text: &str) -> Vec<(String, String)> {
 
 /// The `Version:` line of `flatpak info <id>`.
 pub fn parse_flatpak_info(text: &str) -> Option<String> {
-    text.lines()
-        .find_map(|l| {
-            l.trim()
-                .strip_prefix("Version:")
-                .map(|v| v.trim().to_string())
-        })
-        .filter(|v| !v.is_empty())
+    text.lines().find_map(|l| l.trim().strip_prefix("Version:").map(|v| v.trim().to_string())).filter(|v| !v.is_empty())
 }
 
 /// The package names a Craft App may be installed under with `manager`. On Arch the AUR carries
@@ -81,33 +70,19 @@ pub fn parse_flatpak_info(text: &str) -> Option<String> {
 pub fn candidate_names(app: &App, manager: InstallSource) -> Vec<String> {
     match manager {
         InstallSource::Flatpak => vec![app.bundle_id()],
-        InstallSource::Pacman => app
-            .stems()
-            .flat_map(|s| [s.to_string(), format!("{s}-bin"), format!("{s}-git")])
-            .chain(std::iter::once(app.bundle_id()))
-            .collect(),
-        InstallSource::Deb | InstallSource::Rpm => app
-            .stems()
-            .map(str::to_string)
-            .chain(std::iter::once(app.bundle_id()))
-            .collect(),
+        InstallSource::Pacman => {
+            app.stems().flat_map(|s| [s.to_string(), format!("{s}-bin"), format!("{s}-git")]).chain(std::iter::once(app.bundle_id())).collect()
+        }
+        InstallSource::Deb | InstallSource::Rpm => app.stems().map(str::to_string).chain(std::iter::once(app.bundle_id())).collect(),
         _ => app.stems().map(str::to_string).collect(),
     }
 }
 
 /// The package of `app` among `installed`, preferring the manager listed first in `order`.
-pub fn find<'a>(
-    app: &App,
-    installed: &'a [Package],
-    order: &[InstallSource],
-) -> Option<&'a Package> {
+pub fn find<'a>(app: &App, installed: &'a [Package], order: &[InstallSource]) -> Option<&'a Package> {
     order.iter().find_map(|manager| {
         let names = candidate_names(app, *manager);
-        names.iter().find_map(|n| {
-            installed
-                .iter()
-                .find(|p| p.manager == *manager && p.name == *n)
-        })
+        names.iter().find_map(|n| installed.iter().find(|p| p.manager == *manager && p.name == *n))
     })
 }
 
@@ -121,40 +96,20 @@ mod tests {
     use super::*;
 
     fn pkgs(manager: InstallSource, list: Vec<(String, String)>) -> Vec<Package> {
-        list.into_iter()
-            .map(|(name, version)| Package {
-                manager,
-                name,
-                version,
-            })
-            .collect()
+        list.into_iter().map(|(name, version)| Package { manager, name, version }).collect()
     }
 
     #[test]
     fn reads_each_package_managers_listing() {
         assert_eq!(
-            parse_dpkg(
-                "photocraft|installed|0.5.0-1\nphotocraft:amd64|installed|0.6.0-1\nwordcraft|config-files|0.3.0-1\n"
-            ),
-            [
-                ("photocraft".into(), "0.5.0-1".into()),
-                ("photocraft".into(), "0.6.0-1".into())
-            ]
+            parse_dpkg("photocraft|installed|0.5.0-1\nphotocraft:amd64|installed|0.6.0-1\nwordcraft|config-files|0.3.0-1\n"),
+            [("photocraft".into(), "0.5.0-1".into()), ("photocraft".into(), "0.6.0-1".into())]
         );
-        assert_eq!(
-            parse_rpm("gridcraft|0.3.0\n"),
-            [("gridcraft".into(), "0.3.0".into())]
-        );
-        assert_eq!(
-            parse_pacman("photocraft-bin 0.5.0-1\nlinux 6.11.1.arch1-1\n").len(),
-            2
-        );
+        assert_eq!(parse_rpm("gridcraft|0.3.0\n"), [("gridcraft".into(), "0.3.0".into())]);
+        assert_eq!(parse_pacman("photocraft-bin 0.5.0-1\nlinux 6.11.1.arch1-1\n").len(), 2);
         assert_eq!(
             parse_flatpak_list("ai.storyteller.wordcraft\t\nai.storyteller.cadcraft\t0.3.0\n"),
-            [
-                ("ai.storyteller.wordcraft".into(), String::new()),
-                ("ai.storyteller.cadcraft".into(), "0.3.0".into())
-            ]
+            [("ai.storyteller.wordcraft".into(), String::new()), ("ai.storyteller.cadcraft".into(), "0.3.0".into())]
         );
         let info = "\nWordCraft - Word processor\n\n          ID: ai.storyteller.wordcraft\n     Version: 0.3.0\n      Branch: master\n";
         assert_eq!(parse_flatpak_info(info).as_deref(), Some("0.3.0"));
@@ -182,57 +137,25 @@ mod tests {
     fn finds_aur_packages_in_every_flavour() {
         let photo = App::by_id("photocraft").unwrap();
         let pdf = App::by_id("pdfcraft").unwrap();
-        let installed = pkgs(
-            InstallSource::Pacman,
-            parse_pacman(
-                "linux 6.11.1.arch1-1\nphotocraft-git 0.3.0.r47.g47f9306-1\nprintcraft-bin 0.2.1-1\n",
-            ),
-        );
+        let installed =
+            pkgs(InstallSource::Pacman, parse_pacman("linux 6.11.1.arch1-1\nphotocraft-git 0.3.0.r47.g47f9306-1\nprintcraft-bin 0.2.1-1\n"));
         let hit = find(photo, &installed, &[InstallSource::Pacman]).unwrap();
         assert_eq!(hit.name, "photocraft-git");
         assert_eq!(version_of(hit).unwrap().to_string(), "0.3.0");
         // PdfCraft under its old name.
-        assert_eq!(
-            find(pdf, &installed, &[InstallSource::Pacman])
-                .unwrap()
-                .name,
-            "printcraft-bin"
-        );
-        assert!(
-            find(
-                App::by_id("wordcraft").unwrap(),
-                &installed,
-                &[InstallSource::Pacman]
-            )
-            .is_none()
-        );
+        assert_eq!(find(pdf, &installed, &[InstallSource::Pacman]).unwrap().name, "printcraft-bin");
+        assert!(find(App::by_id("wordcraft").unwrap(), &installed, &[InstallSource::Pacman]).is_none());
     }
 
     #[test]
     fn prefers_managers_in_order_and_reads_revisions() {
         let photo = App::by_id("photocraft").unwrap();
-        let mut installed = pkgs(
-            InstallSource::Deb,
-            parse_dpkg("photocraft|installed|0.5.0-1\n"),
-        );
-        installed.extend(pkgs(
-            InstallSource::Flatpak,
-            parse_flatpak_list("ai.storyteller.photocraft\t0.4.0\n"),
-        ));
-        let hit = find(
-            photo,
-            &installed,
-            &[InstallSource::Deb, InstallSource::Flatpak],
-        )
-        .unwrap();
+        let mut installed = pkgs(InstallSource::Deb, parse_dpkg("photocraft|installed|0.5.0-1\n"));
+        installed.extend(pkgs(InstallSource::Flatpak, parse_flatpak_list("ai.storyteller.photocraft\t0.4.0\n")));
+        let hit = find(photo, &installed, &[InstallSource::Deb, InstallSource::Flatpak]).unwrap();
         assert_eq!(hit.manager, InstallSource::Deb);
         // 0.5.0-1 is the 0.5.0 release, not a pre-release of it.
         assert_eq!(version_of(hit).unwrap().to_string(), "0.5.0");
-        assert_eq!(
-            find(photo, &installed, &[InstallSource::Flatpak])
-                .unwrap()
-                .version,
-            "0.4.0"
-        );
+        assert_eq!(find(photo, &installed, &[InstallSource::Flatpak]).unwrap().version, "0.4.0");
     }
 }

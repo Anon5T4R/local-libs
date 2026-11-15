@@ -64,16 +64,10 @@ pub struct FeedError {
 /// `http://<loopback host>:<port>` and an optional path: the host must be exactly 127.0.0.1,
 /// localhost or [::1] (no `user@` in front of another host), with a numeric port.
 pub fn is_loopback(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("http://") else {
-        return false;
-    };
+    let Some(rest) = url.strip_prefix("http://") else { return false };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    let Some((host, port)) = authority.rsplit_once(':') else {
-        return false;
-    };
-    matches!(host, "127.0.0.1" | "localhost" | "[::1]")
-        && !port.is_empty()
-        && port.parse::<u16>().is_ok()
+    let Some((host, port)) = authority.rsplit_once(':') else { return false };
+    matches!(host, "127.0.0.1" | "localhost" | "[::1]") && !port.is_empty() && port.parse::<u16>().is_ok()
 }
 
 /// Os seis agentes de uma configuração de TLS (mesmos timeouts/proxy dos dois
@@ -136,14 +130,7 @@ fn agents(user_agent: &str, tls: ureq::tls::TlsConfig, proxy: Option<ureq::Proxy
         .user_agent(user_agent)
         .build()
         .new_agent();
-    Agents {
-        small,
-        feed,
-        no_redirect,
-        download,
-        direct,
-        direct_download,
-    }
+    Agents { small, feed, no_redirect, download, direct, direct_download }
 }
 
 impl Http {
@@ -161,10 +148,7 @@ impl Http {
             .build();
         // Chosen once: the proxy environment variables, else the OS proxy setting.
         let proxy = crate::proxy::pick();
-        Ok(Self {
-            agents: agents(user_agent, tls, proxy),
-            token: None,
-        })
+        Ok(Self { agents: agents(user_agent, tls, proxy), token: None })
     }
 
     /// Roda `op` com o único conjunto de agentes (provider puro). Uma falha de
@@ -179,9 +163,7 @@ impl Http {
     /// to api.github.com. Blank means none.
     #[must_use]
     pub fn with_github_token(mut self, token: Option<String>) -> Self {
-        self.token = token
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty());
+        self.token = token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
         self
     }
 
@@ -189,11 +171,7 @@ impl Http {
     pub fn get_api(&self, url: &str, etag: Option<&str>) -> Result<Fetched, String> {
         let mut resp = self
             .request(|a| {
-                let mut req = a
-                    .small
-                    .get(url)
-                    .header("Accept", "application/vnd.github+json")
-                    .header("X-GitHub-Api-Version", "2022-11-28");
+                let mut req = a.small.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
                 if let Some(tag) = etag {
                     req = req.header("If-None-Match", tag);
                 }
@@ -205,18 +183,12 @@ impl Http {
                 req.call()
             })
             .map_err(|e| format!("couldn't reach GitHub ({e})"))?;
-        let header = |name: &str| {
-            resp.headers()
-                .get(name)
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_string)
-        };
+        let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
         let status = resp.status().as_u16();
         match status {
             200 => {
                 let etag = header("etag");
-                let text = read_text_capped(&mut resp, MAX_API)
-                    .map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+                let text = read_text_capped(&mut resp, MAX_API).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
                 Ok(Fetched::Body { text, etag })
             }
             304 => Ok(Fetched::NotModified),
@@ -225,13 +197,7 @@ impl Http {
                 let remaining = header("x-ratelimit-remaining");
                 let reset = header("x-ratelimit-reset").and_then(|r| r.trim().parse::<i64>().ok());
                 let retry_after = header("retry-after").and_then(|r| r.trim().parse::<i64>().ok());
-                match refused_until(
-                    status,
-                    remaining.as_deref(),
-                    reset,
-                    retry_after,
-                    crate::now(),
-                ) {
+                match refused_until(status, remaining.as_deref(), reset, retry_after, crate::now()) {
                     Some(reset) => Ok(Fetched::RateLimited { reset }),
                     None => Err(format!("GitHub refused the request (HTTP {status})")),
                 }
@@ -242,11 +208,7 @@ impl Http {
 
     /// ArtCraft's release feed, or why it couldn't be read. Never takes more than ~10 seconds.
     pub fn get_feed(&self, url: &str) -> Result<String, FeedError> {
-        let failed = |why: String| FeedError {
-            why,
-            throttled: false,
-            retry_after: None,
-        };
+        let failed = |why: String| FeedError { why, throttled: false, retry_after: None };
         let mut resp = self
             .request(|a| {
                 let agent = if is_loopback(url) { &a.direct } else { &a.feed };
@@ -254,19 +216,10 @@ impl Http {
             })
             .map_err(|e| failed(format!("couldn't reach {} ({e})", host(url))))?;
         // Seconds only; an HTTP date falls back to our own backoff.
-        let retry_after = resp
-            .headers()
-            .get("retry-after")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|r| r.trim().parse::<i64>().ok());
+        let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|r| r.trim().parse::<i64>().ok());
         match resp.status().as_u16() {
-            200 => read_text_capped(&mut resp, MAX_SMALL)
-                .map_err(|e| failed(format!("unreadable answer ({e})"))),
-            s => Err(FeedError {
-                why: format!("{} answered HTTP {s}", host(url)),
-                throttled: s == 429,
-                retry_after,
-            }),
+            200 => read_text_capped(&mut resp, MAX_SMALL).map_err(|e| failed(format!("unreadable answer ({e})"))),
+            s => Err(FeedError { why: format!("{} answered HTTP {s}", host(url)), throttled: s == 429, retry_after }),
         }
     }
 
@@ -274,18 +227,12 @@ impl Http {
     pub fn get_text(&self, url: &str) -> Result<Option<String>, String> {
         let mut resp = self
             .request(|a| {
-                let agent = if is_loopback(url) {
-                    &a.direct
-                } else {
-                    &a.small
-                };
+                let agent = if is_loopback(url) { &a.direct } else { &a.small };
                 agent.get(url).call()
             })
             .map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
         match resp.status().as_u16() {
-            200 => read_text_capped(&mut resp, MAX_SMALL)
-                .map(Some)
-                .map_err(|e| format!("unreadable answer ({e})")),
+            200 => read_text_capped(&mut resp, MAX_SMALL).map(Some).map_err(|e| format!("unreadable answer ({e})")),
             404 => Ok(None),
             s => Err(format!("{} answered HTTP {s}", host(url))),
         }
@@ -297,32 +244,19 @@ impl Http {
     pub fn get_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let mut resp = self
             .request(|a| {
-                let agent = if is_loopback(url) {
-                    &a.direct
-                } else {
-                    &a.small
-                };
+                let agent = if is_loopback(url) { &a.direct } else { &a.small };
                 agent.get(url).call()
             })
             .map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             200 => {
-                let announced = resp
-                    .headers()
-                    .get("content-length")
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|v| v.parse::<u64>().ok());
+                let announced = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
                 let too_big = || format!("{} sent more than {max} bytes", host(url));
                 if announced.is_some_and(|n| n > max as u64) {
                     return Err(too_big());
                 }
-                let body = read_bytes_capped(&mut resp, max).map_err(|e| {
-                    if e.contains("larger than") {
-                        too_big()
-                    } else {
-                        format!("unreadable answer ({e})")
-                    }
-                })?;
+                let body = read_bytes_capped(&mut resp, max)
+                    .map_err(|e| if e.contains("larger than") { too_big() } else { format!("unreadable answer ({e})") })?;
                 Ok(Some(body))
             }
             404 => Ok(None),
@@ -332,15 +266,9 @@ impl Http {
 
     /// Where `url` redirects to, without following it.
     pub fn redirect_target(&self, url: &str) -> Result<Option<String>, String> {
-        let resp = self
-            .request(|a| a.no_redirect.head(url).call())
-            .map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let resp = self.request(|a| a.no_redirect.head(url).call()).map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
         match resp.status().as_u16() {
-            300..=399 => Ok(resp
-                .headers()
-                .get("location")
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_string)),
+            300..=399 => Ok(resp.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string)),
             404 => Ok(None),
             s => Err(format!("{} answered HTTP {s}", host(url))),
         }
@@ -354,32 +282,17 @@ impl Http {
     /// its partial file; a file that fails its checksum is fetched once more from scratch before
     /// giving up. When the connection stays down, the download ends paused (`PAUSED`), never
     /// losing what it has. `stop` pauses or cancels it between reads.
-    pub fn download(
-        &self,
-        url: &str,
-        dest: &Path,
-        size: u64,
-        sha256: &str,
-        stop: &Stop,
-        progress: &mut dyn FnMut(Transfer),
-    ) -> Result<(), String> {
+    pub fn download(&self, url: &str, dest: &Path, size: u64, sha256: &str, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), String> {
         if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(
-                "the release publishes no valid checksum for this file, so it wasn't downloaded"
-                    .into(),
-            );
+            return Err("the release publishes no valid checksum for this file, so it wasn't downloaded".into());
         }
         if let Some(dir) = dest.parent() {
-            std::fs::create_dir_all(dir)
-                .map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
+            std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
         }
         // A finished copy from an earlier attempt that never got installed. Marking it as just
         // used, before checking it, keeps `clean_downloads` away from it while it's installed.
         if dest.is_file() && touch(dest) && matches_published(dest, sha256) {
-            progress(Transfer::Bytes {
-                done: size,
-                total: size,
-            });
+            progress(Transfer::Bytes { done: size, total: size });
             return Ok(());
         }
         // The partial file is named after the release file and its size; if it still turns out
@@ -406,10 +319,7 @@ impl Http {
             }
             let _ = std::fs::remove_file(&part);
             if fresh_start_used {
-                return Err(
-                    "the download doesn't match its published checksum, so it wasn't installed"
-                        .into(),
-                );
+                return Err("the download doesn't match its published checksum, so it wasn't installed".into());
             }
             // A resumed file can be spliced wrongly by a misbehaving proxy: try once from zero.
             log::warn!("checksum mismatch for {url}; downloading again from the start");
@@ -420,14 +330,7 @@ impl Http {
     /// Fetches `url` into `part`, resuming from whatever `part` already holds. Retries while the
     /// transfer keeps making progress; after several attempts in a row get nowhere, it stops and
     /// reports `PAUSED` so the user can resume later.
-    fn fetch_resuming(
-        &self,
-        url: &str,
-        part: &Path,
-        size: u64,
-        stop: &Stop,
-        progress: &mut dyn FnMut(Transfer),
-    ) -> Result<(), String> {
+    fn fetch_resuming(&self, url: &str, part: &Path, size: u64, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), String> {
         let mut fruitless = 0u32;
         loop {
             stop.check()?;
@@ -437,10 +340,7 @@ impl Http {
                 return Err(PAUSED.into());
             }
             if fruitless > 0 {
-                progress(Transfer::Reconnecting {
-                    done: have,
-                    total: size,
-                });
+                progress(Transfer::Reconnecting { done: have, total: size });
                 // 1 s, 2 s, 4 s … 30 s, staying responsive to Pause and Cancel.
                 let wait = Duration::from_secs((1u64 << (fruitless - 1).min(5)).min(30));
                 let until = std::time::Instant::now() + wait;
@@ -453,8 +353,7 @@ impl Http {
                 return Ok(());
             }
             if size > 0 && have > size {
-                std::fs::remove_file(part)
-                    .map_err(|e| format!("couldn't save the download ({e})"))?;
+                std::fs::remove_file(part).map_err(|e| format!("couldn't save the download ({e})"))?;
                 continue;
             }
             match self.attempt(url, part, have, size, stop, progress) {
@@ -470,23 +369,11 @@ impl Http {
     }
 
     /// One request: appends to `part` from byte `have`.
-    fn attempt(
-        &self,
-        url: &str,
-        part: &Path,
-        have: u64,
-        size: u64,
-        stop: &Stop,
-        progress: &mut dyn FnMut(Transfer),
-    ) -> Result<(), AttemptError> {
+    fn attempt(&self, url: &str, part: &Path, have: u64, size: u64, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), AttemptError> {
         let retry = |error: String, progressed: bool| AttemptError::Retry { error, progressed };
         // Binaries are already compressed; ask for the bytes exactly as published.
         let mut resp = match self.request(|a| {
-            let agent = if is_loopback(url) {
-                &a.direct_download
-            } else {
-                &a.download
-            };
+            let agent = if is_loopback(url) { &a.direct_download } else { &a.download };
             let mut req = agent.get(url).header("Accept-Encoding", "identity");
             if have > 0 {
                 req = req.header("Range", &format!("bytes={have}-"));
@@ -497,67 +384,33 @@ impl Http {
             Err(e) => return Err(retry(format!("couldn't connect: {e}"), false)),
         };
         let status = resp.status().as_u16();
-        let header = |name: &str| {
-            resp.headers()
-                .get(name)
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_string)
-        };
+        let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
         let (start, total) = match status {
-            200 => (
-                0,
-                header("content-length")
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .filter(|n| *n > 0)
-                    .unwrap_or(size),
-            ),
-            206 => match header("content-range")
-                .as_deref()
-                .and_then(parse_content_range)
-            {
+            200 => (0, header("content-length").and_then(|v| v.parse::<u64>().ok()).filter(|n| *n > 0).unwrap_or(size)),
+            206 => match header("content-range").as_deref().and_then(parse_content_range) {
                 Some((start, Some(total))) => (start, total),
                 Some((start, None)) => (start, size),
-                None => {
-                    return Err(retry(
-                        "the server sent an unreadable partial response".into(),
-                        false,
-                    ));
-                }
+                None => return Err(retry("the server sent an unreadable partial response".into(), false)),
             },
             // The range is past the end: the part file is already complete (or wrong; the
             // checksum decides).
             416 if have > 0 => return Ok(()),
-            404 | 410 => {
-                return Err(AttemptError::Fatal(
-                    "the file is no longer on the release page".into(),
-                ));
-            }
-            401 | 403 => {
-                return Err(retry(
-                    format!("the server refused the download (HTTP {status})"),
-                    false,
-                ));
-            }
+            404 | 410 => return Err(AttemptError::Fatal("the file is no longer on the release page".into())),
+            401 | 403 => return Err(retry(format!("the server refused the download (HTTP {status})"), false)),
             s => return Err(retry(format!("HTTP {s}"), false)),
         };
         if size > 0 && total != size {
-            return Err(AttemptError::Fatal(format!(
-                "the server offered {total} bytes, but the release lists {size}"
-            )));
+            return Err(AttemptError::Fatal(format!("the server offered {total} bytes, but the release lists {size}")));
         }
         if let Some(enc) = header("content-encoding")
             && !enc.eq_ignore_ascii_case("identity")
         {
-            return Err(AttemptError::Fatal(format!(
-                "unexpected Content-Encoding '{enc}' on binary artifact download"
-            )));
+            return Err(AttemptError::Fatal(format!("unexpected Content-Encoding '{enc}' on binary artifact download")));
         }
         let limit = if total > 0 { total } else { MAX_DOWNLOAD };
         let appends = status == 206 && start == have;
         if appends && have > limit {
-            return Err(AttemptError::Fatal(format!(
-                "the download exceeds the permitted size of {limit} bytes"
-            )));
+            return Err(AttemptError::Fatal(format!("the download exceeds the permitted size of {limit} bytes")));
         }
         // Open the part file at the right place: a 200 restarts it, a 206 continues it.
         let mut file = match (status, start) {
@@ -565,19 +418,11 @@ impl Http {
             _ => std::fs::File::create(part),
         }
         .map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e})")))?;
-        let mut done = if status == 206 && start == have {
-            have
-        } else {
-            0
-        };
+        let mut done = if status == 206 && start == have { have } else { 0 };
         // We check the length and checksum ourselves; the reader's limit is only a backstop
         // against an endless body. (ureq errors once the limit is *reached*, so leave headroom.)
         let remaining = limit.saturating_sub(done);
-        let mut reader = resp
-            .body_mut()
-            .with_config()
-            .limit(remaining.saturating_add(1 << 20))
-            .reader();
+        let mut reader = resp.body_mut().with_config().limit(remaining.saturating_add(1 << 20)).reader();
         let mut buf = vec![0u8; 256 * 1024];
         let at_start = done;
         progress(Transfer::Bytes { done, total });
@@ -587,10 +432,7 @@ impl Http {
                 Ok(n) => n,
                 Err(e) => {
                     let _ = file.sync_all();
-                    return Err(retry(
-                        format!("the connection dropped: {e}"),
-                        done > at_start,
-                    ));
+                    return Err(retry(format!("the connection dropped: {e}"), done > at_start));
                 }
             };
             if n == 0 {
@@ -598,28 +440,16 @@ impl Http {
             }
             let next_done = done.saturating_add(n as u64);
             if next_done > limit {
-                return Err(AttemptError::Fatal(format!(
-                    "the server sent more than the permitted size of {limit} bytes"
-                )));
+                return Err(AttemptError::Fatal(format!("the server sent more than the permitted size of {limit} bytes")));
             }
-            let chunk = buf
-                .get(..n)
-                .ok_or_else(|| AttemptError::Fatal("read past the buffer".into()))?;
-            file.write_all(chunk).map_err(|e| {
-                AttemptError::Fatal(format!(
-                    "couldn't save the download ({e}). Is the disk full?"
-                ))
-            })?;
+            let chunk = buf.get(..n).ok_or_else(|| AttemptError::Fatal("read past the buffer".into()))?;
+            file.write_all(chunk).map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e}). Is the disk full?")))?;
             done = next_done;
             progress(Transfer::Bytes { done, total });
         }
-        file.sync_all()
-            .map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e})")))?;
+        file.sync_all().map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e})")))?;
         if total > 0 && done < total {
-            return Err(retry(
-                format!("the connection closed early ({done} of {total} bytes)"),
-                done > at_start,
-            ));
+            return Err(retry(format!("the connection closed early ({done} of {total} bytes)"), done > at_start));
         }
         Ok(())
     }
@@ -656,9 +486,7 @@ impl Stop {
     const CANCEL: u8 = 2;
 
     pub fn pause(&self) {
-        let _ = self
-            .0
-            .compare_exchange(Self::RUN, Self::PAUSE, Ordering::SeqCst, Ordering::SeqCst);
+        let _ = self.0.compare_exchange(Self::RUN, Self::PAUSE, Ordering::SeqCst, Ordering::SeqCst);
     }
 
     pub fn cancel(&self) {
@@ -682,10 +510,7 @@ fn matches_published(path: &Path, sha256: &str) -> bool {
 
 /// How much of a download is already on disk (a paused or interrupted one).
 pub fn partial_bytes(dest: &Path, size: u64) -> Option<u64> {
-    std::fs::metadata(part_path(dest, size))
-        .ok()
-        .map(|m| m.len())
-        .filter(|n| *n > 0)
+    std::fs::metadata(part_path(dest, size)).ok().map(|m| m.len()).filter(|n| *n > 0)
 }
 
 /// Renames `from` to `to`, retrying for a few seconds while Windows reports the file busy: an
@@ -697,11 +522,7 @@ fn rename_retrying(from: &Path, to: &Path, stop: &Stop) -> Result<(), String> {
     loop {
         stop.check()?;
         match std::fs::rename(from, to) {
-            Err(e)
-                if cfg!(windows)
-                    && matches!(e.raw_os_error(), Some(5 | 32))
-                    && wait <= Duration::from_secs(4) =>
-            {
+            Err(e) if cfg!(windows) && matches!(e.raw_os_error(), Some(5 | 32)) && wait <= Duration::from_secs(4) => {
                 log::info!("{} is busy ({e}); retrying the rename", to.display());
                 std::thread::sleep(wait);
                 wait = wait.saturating_mul(2);
@@ -713,11 +534,7 @@ fn rename_retrying(from: &Path, to: &Path, stop: &Stop) -> Result<(), String> {
 
 /// Sets a file's modification time to now.
 fn touch(path: &Path) -> bool {
-    std::fs::File::options()
-        .write(true)
-        .open(path)
-        .and_then(|f| f.set_modified(std::time::SystemTime::now()))
-        .is_ok()
+    std::fs::File::options().write(true).open(path).and_then(|f| f.set_modified(std::time::SystemTime::now())).is_ok()
 }
 
 /// Whether a finished download is waiting at `dest`. Judged by size alone: `download` checks it
@@ -731,9 +548,7 @@ pub fn finished(dest: &Path, size: u64) -> bool {
 /// untouched for `finished_max_age` (they're for releases long since replaced, or given up on).
 /// Files written within the last minute are always kept, so a running download is never touched.
 pub fn clean_downloads(dir: &Path, partial_max_age: Duration, finished_max_age: Duration) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
     let now = std::time::SystemTime::now();
     for entry in entries.flatten() {
         let path = entry.path();
@@ -741,11 +556,7 @@ pub fn clean_downloads(dir: &Path, partial_max_age: Duration, finished_max_age: 
         if !meta.is_file() {
             continue;
         }
-        let age = meta
-            .modified()
-            .ok()
-            .and_then(|m| now.duration_since(m).ok())
-            .unwrap_or_default();
+        let age = meta.modified().ok().and_then(|m| now.duration_since(m).ok()).unwrap_or_default();
         if age < Duration::from_secs(60) {
             continue;
         }
@@ -756,11 +567,7 @@ pub fn clean_downloads(dir: &Path, partial_max_age: Duration, finished_max_age: 
             .and_then(|stem| stem.rsplit_once('.'))
             .is_some_and(|(_, size)| !size.is_empty() && size.bytes().all(|b| b.is_ascii_digit()));
         let legacy_part = name.ends_with(".part") && !current_part;
-        let max_age = if name.ends_with(".part") {
-            partial_max_age
-        } else {
-            finished_max_age
-        };
+        let max_age = if name.ends_with(".part") { partial_max_age } else { finished_max_age };
         if legacy_part || age > max_age {
             log::info!("removing stale download {}", path.display());
             let _ = std::fs::remove_file(&path);
@@ -788,10 +595,7 @@ enum AttemptError {
 /// `<dest>.<size>.part`: where an unfinished download of `dest` is kept.
 fn part_path(dest: &Path, size: u64) -> std::path::PathBuf {
     let tag = size.to_string();
-    let mut name = dest
-        .file_name()
-        .map(std::ffi::OsStr::to_os_string)
-        .unwrap_or_default();
+    let mut name = dest.file_name().map(std::ffi::OsStr::to_os_string).unwrap_or_default();
     name.push(format!(".{tag}.part"));
     dest.with_file_name(name)
 }
@@ -801,31 +605,23 @@ fn parse_content_range(v: &str) -> Option<(u64, Option<u64>)> {
     let rest = v.trim().strip_prefix("bytes ")?;
     let (range, total) = rest.split_once('/')?;
     let start = range.split_once('-')?.0.trim().parse().ok()?;
-    let total = if total.trim() == "*" {
-        None
-    } else {
-        Some(total.trim().parse().ok()?)
-    };
+    let total = if total.trim() == "*" { None } else { Some(total.trim().parse().ok()?) };
     Some((start, total))
 }
 
 pub fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
-    bytes
-        .iter()
-        .fold(String::with_capacity(bytes.len() * 2), |mut s, b| {
-            let _ = write!(s, "{b:02x}");
-            s
-        })
+    bytes.iter().fold(String::with_capacity(bytes.len() * 2), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 /// SHA-256 of a file on disk.
 pub fn sha256_file(path: &Path) -> Result<String, String> {
-    let mut file =
-        std::fs::File::open(path).map_err(|e| format!("couldn't read {} ({e})", path.display()))?;
+    let mut file = std::fs::File::open(path).map_err(|e| format!("couldn't read {} ({e})", path.display()))?;
     let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher)
-        .map_err(|e| format!("couldn't read {} ({e})", path.display()))?;
+    std::io::copy(&mut file, &mut hasher).map_err(|e| format!("couldn't read {} ({e})", path.display()))?;
     Ok(hex(&hasher.finalize()))
 }
 
@@ -836,13 +632,7 @@ pub fn sha256_file(path: &Path) -> Result<String, String> {
 /// only matters once `x-ratelimit-remaining` is 0. A secondary limit says how long to wait in
 /// `Retry-After` (seconds) and leaves the hourly quota alone; without either, GitHub's advice is
 /// to wait a minute.
-fn refused_until(
-    status: u16,
-    remaining: Option<&str>,
-    reset: Option<i64>,
-    retry_after: Option<i64>,
-    now: i64,
-) -> Option<Option<i64>> {
+fn refused_until(status: u16, remaining: Option<&str>, reset: Option<i64>, retry_after: Option<i64>, now: i64) -> Option<Option<i64>> {
     let retry = retry_after.map(|secs| now.saturating_add(secs.max(0)));
     if remaining.map(str::trim) == Some("0") {
         // `None` sorts first: whichever of the two is known, and the later if both are.
@@ -856,9 +646,7 @@ fn refused_until(
 
 /// The host of `url` for error messages, or all of it when it has no scheme.
 fn host(url: &str) -> &str {
-    url.split_once("://")
-        .and_then(|(_, rest)| rest.split('/').next())
-        .unwrap_or(url)
+    url.split_once("://").and_then(|(_, rest)| rest.split('/').next()).unwrap_or(url)
 }
 
 /// Reads a text body, rejecting one whose *decoded* size exceeds `max`.
@@ -868,19 +656,10 @@ fn host(url: &str) -> &str {
 /// reader with `take` instead, one byte past the cap, and refuse an oversized answer outright —
 /// before it is parsed — instead of truncating it into something that merely fails to parse
 /// (CWE-409). Invalid UTF-8 stays an error, as before.
-fn read_text_capped(
-    resp: &mut ureq::http::Response<ureq::Body>,
-    max: u64,
-) -> Result<String, String> {
-    let mut reader = resp
-        .body_mut()
-        .with_config()
-        .reader()
-        .take(max.saturating_add(1));
+fn read_text_capped(resp: &mut ureq::http::Response<ureq::Body>, max: u64) -> Result<String, String> {
+    let mut reader = resp.body_mut().with_config().reader().take(max.saturating_add(1));
     let mut text = String::new();
-    reader
-        .read_to_string(&mut text)
-        .map_err(|e| e.to_string())?;
+    reader.read_to_string(&mut text).map_err(|e| e.to_string())?;
     if text.len() as u64 > max {
         return Err(format!("the answer is larger than {max} bytes"));
     }
@@ -888,15 +667,8 @@ fn read_text_capped(
 }
 
 /// Reads a binary body, rejecting one whose decoded size exceeds `max` (CWE-409).
-fn read_bytes_capped(
-    resp: &mut ureq::http::Response<ureq::Body>,
-    max: usize,
-) -> Result<Vec<u8>, String> {
-    let mut reader = resp
-        .body_mut()
-        .with_config()
-        .reader()
-        .take((max as u64).saturating_add(1));
+fn read_bytes_capped(resp: &mut ureq::http::Response<ureq::Body>, max: usize) -> Result<Vec<u8>, String> {
+    let mut reader = resp.body_mut().with_config().reader().take((max as u64).saturating_add(1));
     let mut bytes = Vec::new();
     reader.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     if bytes.len() > max {
@@ -914,10 +686,7 @@ pub(crate) mod tests {
 
     #[test]
     fn host_is_what_follows_the_scheme() {
-        assert_eq!(
-            host("https://api.github.com/repos/storytold/wordcraft"),
-            "api.github.com"
-        );
+        assert_eq!(host("https://api.github.com/repos/storytold/wordcraft"), "api.github.com");
         assert_eq!(host("http://127.0.0.1:8080"), "127.0.0.1:8080");
         assert_eq!(host("not a url"), "not a url");
     }
@@ -929,12 +698,7 @@ pub(crate) mod tests {
         let make = |name: &str| {
             let p = dir.path().join(name);
             std::fs::write(&p, b"x").unwrap();
-            std::fs::File::options()
-                .write(true)
-                .open(&p)
-                .unwrap()
-                .set_modified(old)
-                .unwrap();
+            std::fs::File::options().write(true).open(&p).unwrap().set_modified(old).unwrap();
             p
         };
         let keep = make("photocraft-0.5.0-macos-universal.dmg.150000.part");
@@ -960,17 +724,11 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("file.bin");
         let http = Http::new(crate::TEST_AGENT).unwrap();
-        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {})
-            .unwrap();
+        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert!(finished(&dest, len) && !finished(&dest, 0));
         // Old enough to be cleaned up, were it not about to be used.
         let old = std::time::SystemTime::now() - Duration::from_secs(40 * 86_400);
-        std::fs::File::options()
-            .write(true)
-            .open(&dest)
-            .unwrap()
-            .set_modified(old)
-            .unwrap();
+        std::fs::File::options().write(true).open(&dest).unwrap().set_modified(old).unwrap();
         let mut last = (0, 0);
         let again = http.download(&url, &dest, len, &sha, &Stop::default(), &mut |t| {
             if let Transfer::Bytes { done, total } = t {
@@ -995,22 +753,17 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("file.bin");
         let http = Http::new(crate::TEST_AGENT).unwrap();
-        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {})
-            .unwrap();
+        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         // The same size, so only the checksum can tell.
         std::fs::write(&dest, vec![b'x'; body.len()]).unwrap();
-        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {})
-            .unwrap();
+        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         assert_eq!(requests.lock().unwrap().len(), 2);
     }
 
     #[test]
     fn reads_content_ranges() {
-        assert_eq!(
-            parse_content_range("bytes 100-199/1000"),
-            Some((100, Some(1000)))
-        );
+        assert_eq!(parse_content_range("bytes 100-199/1000"), Some((100, Some(1000))));
         assert_eq!(parse_content_range("bytes 5-9/*"), Some((5, None)));
         assert_eq!(parse_content_range("items 1-2/3"), None);
         assert_eq!(parse_content_range("bytes x-9/10"), None);
@@ -1039,19 +792,14 @@ pub(crate) mod tests {
 
     /// Serves `body` over plain HTTP following `script`, one reply per connection; records the
     /// `Range` header each request carried.
-    pub(crate) fn serve(
-        body: Vec<u8>,
-        script: Vec<Reply>,
-    ) -> (String, Arc<Mutex<Vec<Option<String>>>>) {
+    pub(crate) fn serve(body: Vec<u8>, script: Vec<Reply>) -> (String, Arc<Mutex<Vec<Option<String>>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/file.bin", listener.local_addr().unwrap());
         let ranges = Arc::new(Mutex::new(Vec::new()));
         let seen = ranges.clone();
         std::thread::spawn(move || {
             for reply in script {
-                let Ok((mut stream, _)) = listener.accept() else {
-                    return;
-                };
+                let Ok((mut stream, _)) = listener.accept() else { return };
                 let mut range = None;
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
                 loop {
@@ -1107,18 +855,11 @@ pub(crate) mod tests {
         let dest = dir.path().join("file.bin");
         let http = Http::new(crate::TEST_AGENT).unwrap();
         let mut last = (0, 0);
-        let result = http.download(
-            &url,
-            &dest,
-            body.len() as u64,
-            &sha,
-            &Stop::default(),
-            &mut |t| {
-                if let Transfer::Bytes { done, total } = t {
-                    last = (done, total);
-                }
-            },
-        );
+        let result = http.download(&url, &dest, body.len() as u64, &sha, &Stop::default(), &mut |t| {
+            if let Transfer::Bytes { done, total } = t {
+                last = (done, total);
+            }
+        });
         let result = result.map(|()| std::fs::read(&dest).unwrap());
         if result.is_ok() {
             assert_eq!(last, (body.len() as u64, body.len() as u64));
@@ -1132,11 +873,7 @@ pub(crate) mod tests {
         let (body, _) = body();
         let http = Http::new(crate::TEST_AGENT).unwrap();
         let (url, _) = serve(body.clone(), vec![Reply::Full]);
-        assert_eq!(
-            http.get_bytes(&url, body.len()).unwrap(),
-            Some(body.clone()),
-            "a body of exactly the cap is fine"
-        );
+        assert_eq!(http.get_bytes(&url, body.len()).unwrap(), Some(body.clone()), "a body of exactly the cap is fine");
         let (url, _) = serve(body, vec![Reply::Missing]);
         assert_eq!(http.get_bytes(&url, 1 << 20).unwrap(), None);
     }
@@ -1198,8 +935,7 @@ pub(crate) mod tests {
         assert_eq!(err, PAUSED);
         let kept = partial_bytes(&dest, len).unwrap();
         assert!(kept > 0 && kept < len, "{kept}");
-        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {})
-            .unwrap();
+        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         assert_eq!(ranges.lock().unwrap()[1], Some(kept.to_string()));
     }
@@ -1239,17 +975,7 @@ pub(crate) mod tests {
         let dest = dir.path().join("file.bin");
         std::fs::write(part_path(&dest, body.len() as u64), &body[..500_000]).unwrap();
         assert_eq!(partial_bytes(&dest, body.len() as u64), Some(500_000));
-        Http::new(crate::TEST_AGENT)
-            .unwrap()
-            .download(
-                &url,
-                &dest,
-                body.len() as u64,
-                &sha,
-                &Stop::default(),
-                &mut |_| {},
-            )
-            .unwrap();
+        Http::new(crate::TEST_AGENT).unwrap().download(&url, &dest, body.len() as u64, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         assert_eq!(*ranges.lock().unwrap(), [Some("500000".to_string())]);
         assert!(!part_path(&dest, body.len() as u64).exists());
@@ -1263,10 +989,7 @@ pub(crate) mod tests {
         let dest = dir.path().join("file.bin");
         let size = body.len() as u64;
         std::fs::write(part_path(&dest, size), vec![b'x'; body.len() + 1]).unwrap();
-        Http::new(crate::TEST_AGENT)
-            .unwrap()
-            .download(&url, &dest, size, &sha, &Stop::default(), &mut |_| {})
-            .unwrap();
+        Http::new(crate::TEST_AGENT).unwrap().download(&url, &dest, size, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(dest).unwrap(), body);
         assert_eq!(*ranges.lock().unwrap(), [None]);
     }
@@ -1284,11 +1007,7 @@ pub(crate) mod tests {
             use std::os::windows::fs::OpenOptionsExt;
             std::fs::write(&part, b"too large").unwrap();
             // FILE_SHARE_READ | FILE_SHARE_WRITE, without FILE_SHARE_DELETE.
-            std::fs::File::options()
-                .read(true)
-                .share_mode(0x00000003)
-                .open(&part)
-                .unwrap()
+            std::fs::File::options().read(true).share_mode(0x00000003).open(&part).unwrap()
         };
         assert!(std::fs::metadata(&part).unwrap().len() > 1);
         assert!(std::fs::remove_file(&part).is_err());
@@ -1303,8 +1022,7 @@ pub(crate) mod tests {
                     watchdog_stop.cancel();
                 }
             });
-            let result =
-                http.fetch_resuming("http://127.0.0.1:9/file.bin", &part, 1, &stop, &mut |_| {});
+            let result = http.fetch_resuming("http://127.0.0.1:9/file.bin", &part, 1, &stop, &mut |_| {});
             let _ = finished.send(());
             result.unwrap_err()
         });
@@ -1331,9 +1049,7 @@ pub(crate) mod tests {
         let long = vec![b' '; (MAX_SMALL as usize) + 1024];
         let (url, _) = serve(long.clone(), vec![Reply::Full]);
         let http = Http::new(crate::TEST_AGENT).unwrap();
-        assert!(
-            matches!(http.get_api(&url, None), Ok(Fetched::Body { text, .. }) if text.len() == long.len())
-        );
+        assert!(matches!(http.get_api(&url, None), Ok(Fetched::Body { text, .. }) if text.len() == long.len()));
         // Past MAX_API it is refused outright, not truncated and parsed.
         let (url, _) = serve(vec![b' '; (MAX_API as usize) + 1024], vec![Reply::Full]);
         let err = http.get_api(&url, None).unwrap_err();
@@ -1347,11 +1063,7 @@ pub(crate) mod tests {
         // refuses this; a wire-byte limit would hand the parser truncated JSON.
         let big = vec![b'x'; (MAX_SMALL as usize) + 1024];
         let gz = gzip(&big);
-        assert!(
-            gz.len() * 4 < MAX_SMALL as usize,
-            "no longer a bomb: {} compressed bytes",
-            gz.len()
-        );
+        assert!(gz.len() * 4 < MAX_SMALL as usize, "no longer a bomb: {} compressed bytes", gz.len());
         let (url, _) = serve(gz, vec![Reply::Gzipped]);
         let http = Http::new(crate::TEST_AGENT).unwrap();
         let err = http.get_text(&url).unwrap_err();
@@ -1373,57 +1085,26 @@ pub(crate) mod tests {
     #[ignore = "needs network access"]
     fn downloads_a_real_release_asset() {
         let http = Http::new(crate::TEST_AGENT).unwrap();
-        let Fetched::Body { text, .. } = http
-            .get_api(
-                "https://api.github.com/repos/storytold/wordcraft/releases/latest",
-                None,
-            )
-            .unwrap()
-        else {
+        let Fetched::Body { text, .. } = http.get_api("https://api.github.com/repos/storytold/wordcraft/releases/latest", None).unwrap() else {
             panic!("no release")
         };
         let release = crate::release::parse_github_release(&text, "storytold/wordcraft").unwrap();
         let sums_url = &release.sums_asset().unwrap().url;
         let sums = crate::release::parse_sha256sums(&http.get_text(sums_url).unwrap().unwrap());
-        let asset = release
-            .assets
-            .iter()
-            .find(|a| a.name.ends_with("freebsd-x86_64.tar.gz"))
-            .unwrap();
-        let sha = asset
-            .sha256
-            .clone()
-            .or_else(|| {
-                sums.iter()
-                    .find(|(_, n)| *n == asset.name)
-                    .map(|(h, _)| h.clone())
-            })
-            .unwrap();
+        let asset = release.assets.iter().find(|a| a.name.ends_with("freebsd-x86_64.tar.gz")).unwrap();
+        let sha = asset.sha256.clone().or_else(|| sums.iter().find(|(_, n)| *n == asset.name).map(|(h, _)| h.clone())).unwrap();
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join(&asset.name);
-        http.download(
-            &asset.url,
-            &dest,
-            asset.size,
-            &sha,
-            &Stop::default(),
-            &mut |_| {},
-        )
-        .unwrap();
+        http.download(&asset.url, &dest, asset.size, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::metadata(&dest).unwrap().len(), asset.size);
     }
 
     /// Answers one request with `head` (status line and headers) and an empty body.
     fn answer_once(head: String) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!(
-            "http://{}/repos/storytold/photocraft/releases/latest",
-            listener.local_addr().unwrap()
-        );
+        let url = format!("http://{}/repos/storytold/photocraft/releases/latest", listener.local_addr().unwrap());
         std::thread::spawn(move || {
-            let Ok((mut stream, _)) = listener.accept() else {
-                return;
-            };
+            let Ok((mut stream, _)) = listener.accept() else { return };
             let mut reader = BufReader::new(stream.try_clone().unwrap());
             loop {
                 let mut line = String::new();
@@ -1431,10 +1112,7 @@ pub(crate) mod tests {
                     break;
                 }
             }
-            let _ = write!(
-                stream,
-                "{head}Content-Length: 0\r\nConnection: close\r\n\r\n"
-            );
+            let _ = write!(stream, "{head}Content-Length: 0\r\nConnection: close\r\n\r\n");
         });
         url
     }
@@ -1448,73 +1126,39 @@ pub(crate) mod tests {
             "HTTP/1.1 403 Forbidden\r\nx-ratelimit-remaining: 41\r\nx-ratelimit-reset: {}\r\nretry-after: 60\r\n",
             now + 50 * 60
         ));
-        let Fetched::RateLimited { reset: Some(until) } = Http::new(crate::TEST_AGENT)
-            .unwrap()
-            .get_api(&url, None)
-            .unwrap()
-        else {
+        let Fetched::RateLimited { reset: Some(until) } = Http::new(crate::TEST_AGENT).unwrap().get_api(&url, None).unwrap() else {
             panic!("not rate limited")
         };
-        assert!(
-            (now + 60..now + 120).contains(&until),
-            "limited for {} s",
-            until - now
-        );
+        assert!((now + 60..now + 120).contains(&until), "limited for {} s", until - now);
     }
 
     #[test]
     fn an_empty_hourly_quota_waits_for_the_reset() {
         let now = crate::now();
         let reset = now + 31 * 60;
-        let url = answer_once(format!(
-            "HTTP/1.1 403 Forbidden\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: {reset}\r\n"
-        ));
-        assert_eq!(
-            Http::new(crate::TEST_AGENT)
-                .unwrap()
-                .get_api(&url, None)
-                .unwrap(),
-            Fetched::RateLimited { reset: Some(reset) }
-        );
+        let url = answer_once(format!("HTTP/1.1 403 Forbidden\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: {reset}\r\n"));
+        assert_eq!(Http::new(crate::TEST_AGENT).unwrap().get_api(&url, None).unwrap(), Fetched::RateLimited { reset: Some(reset) });
     }
 
     #[test]
     fn github_refusals_are_read_the_way_github_documents_them() {
         const NOW: i64 = 1_791_500_000;
         // Out of quota: until the reset, or Retry-After if that's later.
-        assert_eq!(
-            refused_until(403, Some("0"), Some(NOW + 1800), None, NOW),
-            Some(Some(NOW + 1800))
-        );
-        assert_eq!(
-            refused_until(403, Some("0"), Some(NOW + 30), Some(90), NOW),
-            Some(Some(NOW + 90))
-        );
+        assert_eq!(refused_until(403, Some("0"), Some(NOW + 1800), None, NOW), Some(Some(NOW + 1800)));
+        assert_eq!(refused_until(403, Some("0"), Some(NOW + 30), Some(90), NOW), Some(Some(NOW + 90)));
         assert_eq!(refused_until(403, Some("0"), None, None, NOW), Some(None));
         // A secondary limit: Retry-After, never the hourly reset.
-        assert_eq!(
-            refused_until(429, Some("12"), Some(NOW + 1800), Some(30), NOW),
-            Some(Some(NOW + 30))
-        );
+        assert_eq!(refused_until(429, Some("12"), Some(NOW + 1800), Some(30), NOW), Some(Some(NOW + 30)));
         // A 429 that doesn't say: a minute.
-        assert_eq!(
-            refused_until(429, Some("12"), Some(NOW + 1800), None, NOW),
-            Some(Some(NOW + 60))
-        );
+        assert_eq!(refused_until(429, Some("12"), Some(NOW + 1800), None, NOW), Some(Some(NOW + 60)));
         // A plain 403 (blocked, private, …) isn't a rate limit.
-        assert_eq!(
-            refused_until(403, Some("12"), Some(NOW + 1800), None, NOW),
-            None
-        );
+        assert_eq!(refused_until(403, Some("12"), Some(NOW + 1800), None, NOW), None);
         assert_eq!(refused_until(403, None, None, None, NOW), None);
     }
 
     #[test]
     fn partial_files_are_named_after_the_file_and_size() {
-        assert_eq!(
-            part_path(Path::new("/d/photocraft.dmg"), 9),
-            Path::new("/d/photocraft.dmg.9.part")
-        );
+        assert_eq!(part_path(Path::new("/d/photocraft.dmg"), 9), Path::new("/d/photocraft.dmg.9.part"));
     }
 
     #[test]
@@ -1522,19 +1166,14 @@ pub(crate) mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         std::thread::spawn(move || {
-            let Ok((mut stream, _)) = listener.accept() else {
-                return;
-            };
+            let Ok((mut stream, _)) = listener.accept() else { return };
             let mut line = String::new();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
             while reader.read_line(&mut line).unwrap_or(0) > 0 && line != "\r\n" {
                 line.clear();
             }
             let body = vec![b'A'; 200];
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Length: 200\r\nConnection: close\r\n\r\n"
-            );
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: 200\r\nConnection: close\r\n\r\n");
             let _ = stream.write_all(&body);
         });
         let http = Http::new(crate::TEST_AGENT).unwrap();

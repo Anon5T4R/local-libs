@@ -61,17 +61,8 @@ impl Default for Queue {
 
 impl Queue {
     pub const fn new() -> Self {
-        let state = State {
-            busy: false,
-            next_id: 0,
-            waiting: Vec::new(),
-            running: Vec::new(),
-            finished: Vec::new(),
-        };
-        Self {
-            state: Mutex::new(state),
-            changed: Condvar::new(),
-        }
+        let state = State { busy: false, next_id: 0, waiting: Vec::new(), running: Vec::new(), finished: Vec::new() };
+        Self { state: Mutex::new(state), changed: Condvar::new() }
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -80,21 +71,13 @@ impl Queue {
 
     /// Until something changes, or long enough to ask again whether the job was cancelled.
     fn wait<'a>(&self, state: MutexGuard<'a, State>) -> MutexGuard<'a, State> {
-        self.changed
-            .wait_timeout(state, Duration::from_millis(100))
-            .unwrap_or_else(PoisonError::into_inner)
-            .0
+        self.changed.wait_timeout(state, Duration::from_millis(100)).unwrap_or_else(PoisonError::into_inner).0
     }
 
     /// Runs `work` once no other installer is running. `turn(true)` says it has to wait,
     /// `turn(false)` that the wait is over. `None` when `cancelled` (asked a few times a second,
     /// so it must not block) said so during the wait; `work` then never ran.
-    pub fn alone<R>(
-        &self,
-        cancelled: &dyn Fn() -> bool,
-        turn: &mut dyn FnMut(bool),
-        work: impl FnOnce() -> R,
-    ) -> Option<R> {
+    pub fn alone<R>(&self, cancelled: &dyn Fn() -> bool, turn: &mut dyn FnMut(bool), work: impl FnOnce() -> R) -> Option<R> {
         let mut state = self.lock();
         let mut waited = false;
         loop {
@@ -118,11 +101,7 @@ impl Queue {
         if waited {
             turn(false);
         }
-        let _turn = Turn {
-            queue: self,
-            others: Vec::new(),
-            outcome: Ok(()),
-        };
+        let _turn = Turn { queue: self, others: Vec::new(), outcome: Ok(()) };
         Some(work())
     }
 
@@ -143,11 +122,7 @@ impl Queue {
         let mut state = self.lock();
         let id = state.next_id;
         state.next_id = state.next_id.wrapping_add(1);
-        state.waiting.push(Waiting {
-            id,
-            command: command.clone(),
-            target,
-        });
+        state.waiting.push(Waiting { id, command: command.clone(), target });
         let (mut waited, mut started) = (false, false);
         loop {
             if let Some(at) = state.finished.iter().position(|(done, _)| *done == id) {
@@ -172,9 +147,7 @@ impl Queue {
                 state = self.wait(state);
             }
         }
-        let (batch, rest): (Vec<Waiting>, Vec<Waiting>) = std::mem::take(&mut state.waiting)
-            .into_iter()
-            .partition(|w| w.command == command);
+        let (batch, rest): (Vec<Waiting>, Vec<Waiting>) = std::mem::take(&mut state.waiting).into_iter().partition(|w| w.command == command);
         state.waiting = rest;
         state.busy = true;
         state.running = batch.iter().map(|w| w.id).collect();
@@ -183,17 +156,9 @@ impl Queue {
         if waited {
             turn(false);
         }
-        let others = batch
-            .iter()
-            .map(|w| w.id)
-            .filter(|other| *other != id)
-            .collect();
+        let others = batch.iter().map(|w| w.id).filter(|other| *other != id).collect();
         let targets: Vec<OsString> = batch.into_iter().map(|w| w.target).collect();
-        let mut call = Turn {
-            queue: self,
-            others,
-            outcome: Err("the system installer was interrupted".into()),
-        };
+        let mut call = Turn { queue: self, others, outcome: Err("the system installer was interrupted".into()) };
         let outcome = exec(&command, &targets);
         call.outcome.clone_from(&outcome);
         outcome
@@ -232,10 +197,7 @@ mod tests {
         fn record(&self, command: &[OsString], targets: &[OsString]) {
             let mut targets = targets.to_vec();
             targets.sort();
-            self.0
-                .lock()
-                .unwrap()
-                .push(command.iter().cloned().chain(targets).collect());
+            self.0.lock().unwrap().push(command.iter().cloned().chain(targets).collect());
         }
 
         fn taken(&self) -> Vec<Vec<OsString>> {
@@ -289,34 +251,19 @@ mod tests {
     fn jobs_that_wait_together_share_one_call_per_command() {
         let queue = Queue::new();
         let calls = Calls::default();
-        let jobs = [
-            (install(), "a.deb"),
-            (install(), "b.deb"),
-            (remove(), "photocraft"),
-            (install(), "c.deb"),
-        ];
+        let jobs = [(install(), "a.deb"), (install(), "b.deb"), (remove(), "photocraft"), (install(), "c.deb")];
         let results = behind_a_running_install(&queue, &jobs, &|command, targets| {
             calls.record(command, targets);
             Ok(())
         });
         assert_eq!(results, vec![Some(Ok(())); 4]);
-        assert_eq!(
-            calls.taken(),
-            [
-                line(&["apt-get", "install", "-y", "a.deb", "b.deb", "c.deb"]),
-                line(&["apt-get", "remove", "-y", "photocraft"])
-            ]
-        );
+        assert_eq!(calls.taken(), [line(&["apt-get", "install", "-y", "a.deb", "b.deb", "c.deb"]), line(&["apt-get", "remove", "-y", "photocraft"])]);
     }
 
     #[test]
     fn installers_never_run_at_the_same_time() {
         let queue = Queue::new();
-        let (inside, most, handled) = (
-            AtomicUsize::new(0),
-            AtomicUsize::new(0),
-            AtomicUsize::new(0),
-        );
+        let (inside, most, handled) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
         let enter = || {
             most.fetch_max(inside.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
             std::thread::sleep(Duration::from_millis(3));
@@ -333,24 +280,8 @@ mod tests {
                         Ok(())
                     };
                     match i % 3 {
-                        0 => queue
-                            .batched(
-                                install(),
-                                os(&format!("{i}.deb")),
-                                &|| false,
-                                &mut |_| {},
-                                &exec,
-                            )
-                            .unwrap(),
-                        1 => queue
-                            .batched(
-                                remove(),
-                                os(&format!("app{i}")),
-                                &|| false,
-                                &mut |_| {},
-                                &exec,
-                            )
-                            .unwrap(),
+                        0 => queue.batched(install(), os(&format!("{i}.deb")), &|| false, &mut |_| {}, &exec).unwrap(),
+                        1 => queue.batched(remove(), os(&format!("app{i}")), &|| false, &mut |_| {}, &exec).unwrap(),
                         _ => queue
                             .alone(&|| false, &mut |_| {}, || {
                                 enter();
@@ -375,50 +306,28 @@ mod tests {
         std::thread::scope(|scope| {
             let (queue, calls) = (&queue, &calls);
             let first = scope.spawn(move || {
-                queue.batched(
-                    install(),
-                    os("a.deb"),
-                    &|| false,
-                    &mut |_| panic!("the first job never waits"),
-                    &|command, targets| {
-                        calls.record(command, targets);
-                        started.send(()).unwrap();
-                        released.recv().unwrap();
-                        Ok(())
-                    },
-                )
+                queue.batched(install(), os("a.deb"), &|| false, &mut |_| panic!("the first job never waits"), &|command, targets| {
+                    calls.record(command, targets);
+                    started.send(()).unwrap();
+                    released.recv().unwrap();
+                    Ok(())
+                })
             });
             has_started.recv().unwrap();
             let second = scope.spawn(move || {
-                queue.batched(
-                    install(),
-                    os("b.deb"),
-                    &|| false,
-                    &mut |waiting| turned.send(waiting).unwrap(),
-                    &|command, targets| {
-                        calls.record(command, targets);
-                        Ok(())
-                    },
-                )
+                queue.batched(install(), os("b.deb"), &|| false, &mut |waiting| turned.send(waiting).unwrap(), &|command, targets| {
+                    calls.record(command, targets);
+                    Ok(())
+                })
             });
             assert!(turns.recv().unwrap(), "the second job says it is waiting");
-            assert_eq!(
-                calls.0.lock().unwrap().len(),
-                1,
-                "and does not start while the first runs"
-            );
+            assert_eq!(calls.0.lock().unwrap().len(), 1, "and does not start while the first runs");
             release.send(()).unwrap();
             assert_eq!(first.join().unwrap(), Ok(()));
             assert_eq!(second.join().unwrap(), Ok(()));
             assert!(!turns.recv().unwrap(), "then that its turn came");
         });
-        assert_eq!(
-            calls.taken(),
-            [
-                line(&["apt-get", "install", "-y", "a.deb"]),
-                line(&["apt-get", "install", "-y", "b.deb"])
-            ]
-        );
+        assert_eq!(calls.taken(), [line(&["apt-get", "install", "-y", "a.deb"]), line(&["apt-get", "install", "-y", "b.deb"])]);
     }
 
     #[test]
@@ -454,10 +363,7 @@ mod tests {
                         }
                         Ok(())
                     };
-                    assert_eq!(
-                        queue.batched(install(), os(file), &|| false, &mut turn, &exec),
-                        Ok(())
-                    );
+                    assert_eq!(queue.batched(install(), os(file), &|| false, &mut turn, &exec), Ok(()));
                 });
             }
             assert!(turns.recv().unwrap() && turns.recv().unwrap());
@@ -470,11 +376,7 @@ mod tests {
     fn a_dismissed_prompt_cancels_every_job_of_the_call() {
         let queue = Queue::new();
         let calls = Calls::default();
-        let jobs = [
-            (install(), "a.deb"),
-            (install(), "b.deb"),
-            (install(), "c.deb"),
-        ];
+        let jobs = [(install(), "a.deb"), (install(), "b.deb"), (install(), "c.deb")];
         let results = behind_a_running_install(&queue, &jobs, &|command, targets| {
             calls.record(command, targets);
             Err("cancelled".into())
@@ -506,23 +408,10 @@ mod tests {
             };
             let turned_too = turned.clone();
             let leaving = scope.spawn(move || {
-                queue.batched(
-                    install(),
-                    os("a.deb"),
-                    &|| cancel.load(Ordering::SeqCst),
-                    &mut |waiting| turned.send(waiting).unwrap(),
-                    &exec,
-                )
+                queue.batched(install(), os("a.deb"), &|| cancel.load(Ordering::SeqCst), &mut |waiting| turned.send(waiting).unwrap(), &exec)
             });
-            let staying = scope.spawn(move || {
-                queue.batched(
-                    install(),
-                    os("b.deb"),
-                    &|| false,
-                    &mut |waiting| turned_too.send(waiting).unwrap(),
-                    &exec,
-                )
-            });
+            let staying =
+                scope.spawn(move || queue.batched(install(), os("b.deb"), &|| false, &mut |waiting| turned_too.send(waiting).unwrap(), &exec));
             assert!(turns.recv().unwrap() && turns.recv().unwrap());
             cancel.store(true, Ordering::SeqCst);
             // It leaves while the other install is still running, without waiting for its turn.
@@ -531,10 +420,7 @@ mod tests {
             release.send(()).unwrap();
             assert_eq!(staying.join().unwrap(), Ok(()));
         });
-        assert_eq!(
-            calls.taken(),
-            [line(&["apt-get", "install", "-y", "b.deb"])]
-        );
+        assert_eq!(calls.taken(), [line(&["apt-get", "install", "-y", "b.deb"])]);
     }
 
     #[test]
@@ -551,9 +437,7 @@ mod tests {
                 });
             });
             has_started.recv().unwrap();
-            let ran = queue.alone(&|| true, &mut |_| {}, || {
-                panic!("a cancelled job never runs")
-            });
+            let ran = queue.alone(&|| true, &mut |_| {}, || panic!("a cancelled job never runs"));
             assert_eq!(ran, None);
             release.send(()).unwrap();
         });
@@ -589,18 +473,12 @@ mod tests {
                                 turned.send(()).unwrap();
                             }
                         };
-                        queue.batched(
-                            command.clone(),
-                            os(target),
-                            &|| cancel.load(Ordering::SeqCst),
-                            &mut turn,
-                            &|_, targets| {
-                                assert_eq!(targets.len(), 2);
-                                in_call.send(()).unwrap();
-                                finished.lock().unwrap().recv().unwrap();
-                                Ok(())
-                            },
-                        )
+                        queue.batched(command.clone(), os(target), &|| cancel.load(Ordering::SeqCst), &mut turn, &|_, targets| {
+                            assert_eq!(targets.len(), 2);
+                            in_call.send(()).unwrap();
+                            finished.lock().unwrap().recv().unwrap();
+                            Ok(())
+                        })
                     })
                 })
                 .collect();
@@ -628,17 +506,7 @@ mod tests {
         });
         // The job that made the call unwound; the other was told.
         assert!(results.contains(&None), "{results:?}");
-        assert!(
-            results.contains(&Some(Err(
-                "the system installer was interrupted".to_string()
-            ))),
-            "{results:?}"
-        );
-        assert_eq!(
-            queue.batched(install(), os("c.deb"), &|| false, &mut |_| {}, &|_, _| Ok(
-                ()
-            )),
-            Ok(())
-        );
+        assert!(results.contains(&Some(Err("the system installer was interrupted".to_string()))), "{results:?}");
+        assert_eq!(queue.batched(install(), os("c.deb"), &|| false, &mut |_| {}, &|_, _| Ok(())), Ok(()));
     }
 }
