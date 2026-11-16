@@ -1,22 +1,28 @@
-# sync.ps1 - sincroniza crates/update do local-libs para os apps da suite.
+# sync.ps1 - sincroniza uma crate do local-libs para os apps da suite.
 # Uso:
-#   powershell -File scripts/sync.ps1 -Mode verify              # confere fonte + 10 apps (nao altera nada)
-#   powershell -File scripts/sync.ps1 -Mode push [-Apps a,b]    # copia a fonte para os apps e verifica
+#   powershell -File scripts/sync.ps1 -Mode verify                       # confere a fonte + os apps (nao altera nada)
+#   powershell -File scripts/sync.ps1 -Mode push [-Apps a,b]             # copia a fonte para os apps e verifica
+#   powershell -File scripts/sync.ps1 -Crate ai-ui -Mode push [-Apps x]  # outra crate (default: update)
 # Requer: PowerShell 5.1+, git nos repos. Rodar na raiz do repo local-libs.
 param(
   [ValidateSet('verify', 'push')] [string]$Mode = 'verify',
-  # Default: todos os apps que tiverem libs/craft-libs/crates/update
+  # A crate da fonte (`crates/<Crate>`) e o manifesto (`HASHES.<Crate>`).
+  [string]$Crate = 'update',
+  # Default: todos os apps que tiverem libs/craft-libs/crates/<Crate>
   [string[]]$Apps = @()
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$src = Join-Path $root 'crates\update'
+$src = Join-Path $root "crates\$Crate"
 $appsRoot = 'C:\Dev\underworld-apps'   # no Arch: ~/Dev/dev-arch/underworld-apps
+$manifestName = "HASHES.$Crate"
+
+if (-not (Test-Path $src)) { throw "fonte ausente: $src" }
 
 if ($Apps.Count -eq 0) {
   $Apps = Get-ChildItem $appsRoot -Directory |
-    Where-Object { Test-Path (Join-Path $_.FullName 'libs\craft-libs\crates\update') } |
+    Where-Object { Test-Path (Join-Path $_.FullName "libs\craft-libs\crates\$Crate") } |
     ForEach-Object { $_.Name }
 }
 
@@ -32,22 +38,22 @@ function Get-DirHash([string]$dir) {
 
 $srcHash = Get-DirHash $src
 $srcCount = (Get-ChildItem $src -Recurse -File).Count
-Write-Host "fonte: $srcCount arquivos"
+Write-Host "fonte ($Crate): $srcCount arquivos"
 
 # 1. manifest no repo (fonte de verdade declarada)
-$manifestPath = Join-Path $root 'HASHES.update'
+$manifestPath = Join-Path $root $manifestName
 if ($Mode -eq 'push') {
   [System.IO.File]::WriteAllText($manifestPath, $srcHash, (New-Object System.Text.UTF8Encoding($false)))
 } elseif (Test-Path $manifestPath) {
   if ((Get-DirHash $src) -ne [System.IO.File]::ReadAllText($manifestPath)) {
-    throw 'DRIFT: crates/update diverge do HASHES.update commitado - rode -Mode push para regenerar (e explique no commit por que a fonte mudou).'
+    throw "DRIFT: crates/$Crate diverge do $manifestName commitado - rode -Mode push para regenerar (e explique no commit por que a fonte mudou)."
   }
 }
 
 # 2. apps
 $fail = 0
 foreach ($app in $Apps) {
-  $dst = Join-Path $appsRoot "$app\libs\craft-libs\crates\update"
+  $dst = Join-Path $appsRoot "$app\libs\craft-libs\crates\$Crate"
   if (-not (Test-Path $dst)) { Write-Warning "$app : destino ausente ($dst)"; $fail++; continue }
   if ($Mode -eq 'push' -and (Get-DirHash $dst) -ne $srcHash) {
     robocopy $src $dst /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
@@ -57,4 +63,4 @@ foreach ($app in $Apps) {
   if (-not $ok) { $fail++ }
 }
 if ($fail -gt 0) { throw "$fail app(s) divergente(s) da fonte." }
-Write-Host 'Todos os apps conferem com a fonte.'
+Write-Host "Todos os apps conferem com a fonte ($Crate)."

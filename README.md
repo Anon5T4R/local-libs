@@ -30,6 +30,7 @@ elimina.
 | crate | origem | notas |
 |---|---|---|
 | `craft-update` | unificação 2026-11-13 + minisign 2026-11-14 | fork permanente consciente do upstream storytold; fora do escopo do sync-upstream. Minisign: verificação advisory, `SUITE_PUBKEYS` em lista (rotação = append). |
+| `craft-ai-ui` | extração 2026-11-16 (molde: Local Obsidian) | a superfície de IA da suíte: `ConnectionsPanel`, `StatusStrip`, `ChatPanel`, `WindowPolicy` (`ContextSource`/`LastN`/orçamento com prioridade turno atual > últimos N > doc). Só egui, sem rede: o app inicia o próprio stream e alimenta o painel; prompts, contexto e apply ficam no app. Primeiro consumidor: Local Obsidian (v1.5.0). |
 
 **Regra de entrada:** nova crate só entra aqui quando (a) já vive idêntica em
 2+ apps, ou (b) é exigida pelo template de app novo (F10). Kit/capacidade
