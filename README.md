@@ -8,7 +8,7 @@ script de sincronização replica e vigia.
 ## Mecânica (copy-script, modelo `local-ai`)
 
 - **Fonte:** `crates/<crate>` aqui.
-- **Cópias:** `libs/craft-libs/crates/<crate>` em cada app (11 hoje).
+- **Cópias:** `libs/craft-libs/crates/<crate>` em cada app (13 hoje).
 - **Sync:** `powershell -File scripts/sync.ps1 -Mode verify` confere fonte ×
   apps por hash de diretório; `-Mode push` copia e confere. O commit do
   `HASHES.update` declara o estado canônico — fonte que diverge do manifest sem
