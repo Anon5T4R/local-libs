@@ -8,11 +8,11 @@ script de sincronização replica e vigia.
 ## Mecânica (copy-script, modelo `local-ai`)
 
 - **Fonte:** `crates/<crate>` aqui.
-- **Cópias:** `libs/craft-libs/crates/<crate>` em cada app (13 hoje).
+- **Cópias:** `libs/craft-libs/crates/<crate>` em cada app.
 - **Sync:** `powershell -File scripts/sync.ps1 -Mode verify` confere fonte ×
   apps por hash de diretório; `-Mode push` copia e confere. O commit do
-  `HASHES.update` declara o estado canônico — fonte que diverge do manifest sem
-  push explícito falha no verify.
+  `HASHES.<crate>` declara o estado canônico — fonte que diverge do manifest sem
+  push explícito falha no verify. Worktree ou crate nova num app: `-Dirs <pasta do app>` (o push cria a cópia).
 - **Ícones do diálogo de update:** `crates/update/assets/icons/*.png` (128 px) são
   espelho do `hicolor/128x128` de cada app. Ícone mudou num app →
   `powershell -File scripts/sync-icons.ps1 -Mode pull` (copia só os que divergem;
@@ -38,6 +38,7 @@ elimina.
 |---|---|---|
 | `craft-update` | unificação 2026-11-13 + minisign 2026-11-14 | fork permanente consciente do upstream storytold; fora do escopo do sync-upstream. Minisign: verificação advisory, `SUITE_PUBKEYS` em lista (rotação = append). |
 | `craft-ai-ui` | extração 2026-11-16 (molde: Local Obsidian) | a superfície de IA da suíte: `ConnectionsPanel`, `StatusStrip`, `ChatPanel`, `WindowPolicy` (`ContextSource`/`LastN`/orçamento com prioridade turno atual > últimos N > doc). Só egui, sem rede: o app inicia o próprio stream e alimenta o painel; prompts, contexto e apply ficam no app. Primeiro consumidor: Local Obsidian (v1.5.0). |
+| `craft-desktop-theme` | unificação 2026-11-18 (substitui os leitores próprios de sheets, office, pdf, paint e photo) | faz `ctx.system_theme()` responder no Linux, onde o winit não informa tema: um plugin egui copia para o `RawInput` a resposta do portal XDG (observador do `craft-platform` vendorizado, feature `appearance`, que reage ao sinal de mudança). Uso: `craft_desktop_theme::follow(&cc.egui_ctx)` uma vez no binário, nunca em teste. Windows/macOS: não instala nada. |
 | `craft-mcp` | extração 2026-11-16 (molde: Local Vector) | a plumbing MCP da suíte, adaptada de `storytold/vectorcraft` + `storytold/wordcraft` (MIT OR Apache-2.0, crédito no README da crate): servidor stdio `Server<Handler>` (JSON-RPC 2.0, revisões MCP, batch, panic→erro), `script` (`run --script job.json`: array ou JSON Lines + referências `"$N"`), `automation` (flags `--automation-read-root`/`--automation-write-root` + containment) e `remote` (`mcp --connect PORT`, loopback only). Primeiro consumidor: Local Vector (engine `steps`, CLI `--script`/`--connect`/roots). Sem dependências além de `serde_json`. |
 
 **Regra de entrada:** nova crate só entra aqui quando (a) já vive idêntica em
@@ -47,7 +48,7 @@ elimina.
 ## Fluxo de mudança
 
 1. Edite **aqui** e rode `sync.ps1 -Mode push`.
-2. Commite este repo (`crates/` + `HASHES.update` juntos) e push.
+2. Commite este repo (`crates/` + `HASHES.<crate>` juntos) e push.
 3. Commite cada app alterado (mensagem aponta o commit da fonte) e push — CI de
    cada app valida o build.
 4. Registro no `local-deps` quando a mudança altera dependências.

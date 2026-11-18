@@ -3,13 +3,17 @@
 #   powershell -File scripts/sync.ps1 -Mode verify                       # confere a fonte + os apps (nao altera nada)
 #   powershell -File scripts/sync.ps1 -Mode push [-Apps a,b]             # copia a fonte para os apps e verifica
 #   powershell -File scripts/sync.ps1 -Crate ai-ui -Mode push [-Apps x]  # outra crate (default: update)
+#   powershell -File scripts/sync.ps1 -Crate x -Mode push -Dirs C:\Dev\worktree-claude\local-sheets-tema
+#     # pastas de app explicitas (worktrees); em push cria a copia se o app ainda nao tem a crate
 # Requer: PowerShell 5.1+, git nos repos. Rodar na raiz do repo local-libs.
 param(
   [ValidateSet('verify', 'push')] [string]$Mode = 'verify',
   # A crate da fonte (`crates/<Crate>`) e o manifesto (`HASHES.<Crate>`).
   [string]$Crate = 'update',
   # Default: todos os apps que tiverem libs/craft-libs/crates/<Crate>
-  [string[]]$Apps = @()
+  [string[]]$Apps = @(),
+  # Pastas de app (caminho completo) no lugar de -Apps; para worktrees e crate nova.
+  [string[]]$Dirs = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,7 +24,9 @@ $manifestName = "HASHES.$Crate"
 
 if (-not (Test-Path $src)) { throw "fonte ausente: $src" }
 
-if ($Apps.Count -eq 0) {
+if ($Dirs.Count -gt 0) {
+  $Apps = $Dirs
+} elseif ($Apps.Count -eq 0) {
   $Apps = Get-ChildItem $appsRoot -Directory |
     Where-Object { Test-Path (Join-Path $_.FullName "libs\craft-libs\crates\$Crate") } |
     ForEach-Object { $_.Name }
@@ -53,7 +59,11 @@ if ($Mode -eq 'push') {
 # 2. apps
 $fail = 0
 foreach ($app in $Apps) {
-  $dst = Join-Path $appsRoot "$app\libs\craft-libs\crates\$Crate"
+  $appDir = if ($Dirs.Count -gt 0) { $app } else { Join-Path $appsRoot $app }
+  $dst = Join-Path $appDir "libs\craft-libs\crates\$Crate"
+  if ($Mode -eq 'push' -and $Dirs.Count -gt 0 -and -not (Test-Path $dst)) {
+    New-Item -ItemType Directory -Force $dst | Out-Null
+  }
   if (-not (Test-Path $dst)) { Write-Warning "$app : destino ausente ($dst)"; $fail++; continue }
   if ($Mode -eq 'push' -and (Get-DirHash $dst) -ne $srcHash) {
     robocopy $src $dst /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
