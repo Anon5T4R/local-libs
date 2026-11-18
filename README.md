@@ -13,6 +13,11 @@ script de sincronização replica e vigia.
   apps por hash de diretório; `-Mode push` copia e confere. O commit do
   `HASHES.update` declara o estado canônico — fonte que diverge do manifest sem
   push explícito falha no verify.
+- **Ícones do diálogo de update:** `crates/update/assets/icons/*.png` (128 px) são
+  espelho do `hicolor/128x128` de cada app. Ícone mudou num app →
+  `powershell -File scripts/sync-icons.ps1 -Mode pull` (copia só os que divergem;
+  `-Mode check`, o default, só confere e sai 1 se divergir; `-AppsRoot` p/ o Arch) →
+  `sync.ps1 -Mode push` para replicar o crate aos apps. Tabela PNG → app → fonte no topo do script.
 - **Compilação:** acontece dentro do workspace `craft-libs` de cada app (a crate
   herda workspace fields, lints e patches de path do app — egui/winit vendored).
   Este repo **não é workspace de build**.
