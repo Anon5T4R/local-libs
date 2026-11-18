@@ -24,6 +24,9 @@ $manifestName = "HASHES.$Crate"
 
 if (-not (Test-Path $src)) { throw "fonte ausente: $src" }
 
+# `powershell -File` entrega "a,b" como um texto so: separa aqui.
+$Apps = @($Apps | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$Dirs = @($Dirs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 if ($Dirs.Count -gt 0) {
   $Apps = $Dirs
 } elseif ($Apps.Count -eq 0) {
