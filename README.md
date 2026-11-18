@@ -18,6 +18,8 @@ script de sincronização replica e vigia.
   `powershell -File scripts/sync-icons.ps1 -Mode pull` (copia só os que divergem;
   `-Mode check`, o default, só confere e sai 1 se divergir; `-AppsRoot` p/ o Arch) →
   `sync.ps1 -Mode push` para replicar o crate aos apps. Tabela PNG → app → fonte no topo do script.
+- **Instalador MSI:** `python -I scripts/wix-check.py <app> <ref> <wxs> <package.ps1>` compila o `.wxs` com
+  binários falsos (segundos, sem build de release). Rode antes de mergear qualquer mudança em `packaging/windows`.
 - **Compilação:** acontece dentro do workspace `craft-libs` de cada app (a crate
   herda workspace fields, lints e patches de path do app — egui/winit vendored).
   Este repo **não é workspace de build**.
