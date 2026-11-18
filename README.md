@@ -45,6 +45,11 @@ elimina.
 2+ apps, ou (b) é exigida pelo template de app novo (F10). Kit/capacidade
 (editor-kit, media-kit, vault-kit) só nasce de app real concluído.
 
+**Manifesto de crate nova:** `publish = false` sempre. Uma dependência `path` sem versão (outra crate
+vendorizada, ex. `craft-platform`) numa crate publicável reprova o `cargo-deny` (`wildcards`) nos apps cujo
+`deny.toml` não isenta a crate — o `cargo check`/clippy/testes locais não pegam; rode `cargo deny check bans`
+num app antes do push.
+
 ## Fluxo de mudança
 
 1. Edite **aqui** e rode `sync.ps1 -Mode push`.
