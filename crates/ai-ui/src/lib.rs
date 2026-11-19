@@ -11,23 +11,8 @@
 pub mod chat;
 pub mod connections;
 
-/// The suite's close control: an X drawn with two strokes at the text size, frameless like the top-bar icons, so
-/// it lines up with the title next to it (a letter "x" sits on the baseline and reads as text).
-pub fn close_button(ui: &mut egui::Ui, tooltip: &str) -> egui::Response {
-    let side = ui.text_style_height(&egui::TextStyle::Body).max(14.0);
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::click());
-    if ui.is_rect_visible(rect) {
-        let visuals = ui.style().interact(&response);
-        if response.hovered() {
-            ui.painter().rect_filled(rect.expand(2.0), 3.0, visuals.weak_bg_fill);
-        }
-        let mark = rect.shrink(side * 0.25);
-        let stroke = egui::Stroke::new(1.5, visuals.fg_stroke.color);
-        ui.painter().line_segment([mark.left_top(), mark.right_bottom()], stroke);
-        ui.painter().line_segment([mark.right_top(), mark.left_bottom()], stroke);
-    }
-    response.on_hover_text(tooltip)
-}
+/// The suite's close X (craft-icons), kept under this name for the apps that call it from here.
+pub use craft_icons::ui::close_button;
 pub mod policy;
 pub mod strip;
 

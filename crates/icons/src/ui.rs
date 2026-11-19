@@ -34,10 +34,30 @@ pub fn image(ui: &Ui, icon: Icon) -> Image<'static> {
     Image::new(source(icon)).fit_to_exact_size(Vec2::splat(SIZE)).tint(ui.visuals().text_color())
 }
 
-/// A frameless icon button with a tooltip (every icon-only control has one, translated by the app).
+/// An icon button with a tooltip (every icon-only control has one, translated by the app). Like the menu bar's
+/// buttons: no frame at rest, the hover/press background when the pointer is on it.
 pub fn button(ui: &mut Ui, icon: Icon, tooltip: &str) -> Response {
     let image = image(ui, icon);
-    ui.add(egui::Button::image(image).frame(false)).on_hover_text(tooltip)
+    ui.add(egui::Button::image(image).frame_when_inactive(false)).on_hover_text(tooltip)
+}
+
+/// The suite's close X for panels, strips and app-drawn dialog headers: two strokes at the text size, with the
+/// hover/press background of any button, centred on the row so it lines up with the title next to it (a letter "x"
+/// sits on the baseline and reads as text). egui's own window X gets the same background from the fork (E22).
+pub fn close_button(ui: &mut Ui, tooltip: &str) -> Response {
+    let side = ui.text_style_height(&egui::TextStyle::Body).max(14.0);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let visuals = ui.style().interact(&response);
+        if response.hovered() || response.is_pointer_button_down_on() || response.has_focus() {
+            ui.painter().rect_filled(rect.expand(2.0), visuals.corner_radius, visuals.weak_bg_fill);
+        }
+        let mark = rect.shrink(side * 0.25);
+        let stroke = egui::Stroke::new(1.5, visuals.fg_stroke.color);
+        ui.painter().line_segment([mark.left_top(), mark.right_bottom()], stroke);
+        ui.painter().line_segment([mark.right_top(), mark.left_bottom()], stroke);
+    }
+    response.on_hover_text(tooltip)
 }
 
 /// The theme button of the top bar: shows the current mode and moves to the next one on click. `tooltip` is the
