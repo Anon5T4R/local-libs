@@ -5,11 +5,15 @@
 #   powershell -File scripts/sync.ps1 -Crate ai-ui -Mode push [-Apps x]  # outra crate (default: update)
 #   powershell -File scripts/sync.ps1 -Crate x -Mode push -Dirs C:\Dev\worktree-claude\local-sheets-tema
 #     # pastas de app explicitas (worktrees); em push cria a copia se o app ainda nao tem a crate
+#   powershell -File scripts/sync.ps1 -Asset craft-fonts -Mode push     # asset: assets/<Asset> -> <app>/assets/<Asset>
 # Requer: PowerShell 5.1+, git nos repos. Rodar na raiz do repo local-libs.
 param(
   [ValidateSet('verify', 'push')] [string]$Mode = 'verify',
   # A crate da fonte (`crates/<Crate>`) e o manifesto (`HASHES.<Crate>`).
   [string]$Crate = 'update',
+  # Um asset (`assets/<Asset>`, manifesto `HASHES.asset-<Asset>`) no lugar de uma crate; vai para
+  # `<app>/assets/<Asset>`.
+  [string]$Asset = '',
   # Default: todos os apps que tiverem libs/craft-libs/crates/<Crate>
   [string[]]$Apps = @(),
   # Pastas de app (caminho completo) no lugar de -Apps; para worktrees e crate nova.
@@ -18,9 +22,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$src = Join-Path $root "crates\$Crate"
+if ($Asset) {
+  $src = Join-Path $root "assets\$Asset"
+  $appRel = "assets\$Asset"
+  $manifestName = "HASHES.asset-$Asset"
+  $Crate = "asset $Asset"
+} else {
+  $src = Join-Path $root "crates\$Crate"
+  $appRel = "libs\craft-libs\crates\$Crate"
+  $manifestName = "HASHES.$Crate"
+}
 $appsRoot = 'C:\Dev\underworld-apps'   # no Arch: ~/Dev/dev-arch/underworld-apps
-$manifestName = "HASHES.$Crate"
 
 if (-not (Test-Path $src)) { throw "fonte ausente: $src" }
 
@@ -31,7 +43,7 @@ if ($Dirs.Count -gt 0) {
   $Apps = $Dirs
 } elseif ($Apps.Count -eq 0) {
   $Apps = Get-ChildItem $appsRoot -Directory |
-    Where-Object { Test-Path (Join-Path $_.FullName "libs\craft-libs\crates\$Crate") } |
+    Where-Object { Test-Path (Join-Path $_.FullName $appRel) } |
     ForEach-Object { $_.Name }
 }
 
@@ -55,7 +67,7 @@ if ($Mode -eq 'push') {
   [System.IO.File]::WriteAllText($manifestPath, $srcHash, (New-Object System.Text.UTF8Encoding($false)))
 } elseif (Test-Path $manifestPath) {
   if ((Get-DirHash $src) -ne [System.IO.File]::ReadAllText($manifestPath)) {
-    throw "DRIFT: crates/$Crate diverge do $manifestName commitado - rode -Mode push para regenerar (e explique no commit por que a fonte mudou)."
+    throw "DRIFT: $Crate diverge do $manifestName commitado - rode -Mode push para regenerar (e explique no commit por que a fonte mudou)."
   }
 }
 
@@ -63,7 +75,7 @@ if ($Mode -eq 'push') {
 $fail = 0
 foreach ($app in $Apps) {
   $appDir = if ($Dirs.Count -gt 0) { $app } else { Join-Path $appsRoot $app }
-  $dst = Join-Path $appDir "libs\craft-libs\crates\$Crate"
+  $dst = Join-Path $appDir $appRel
   if ($Mode -eq 'push' -and $Dirs.Count -gt 0 -and -not (Test-Path $dst)) {
     New-Item -ItemType Directory -Force $dst | Out-Null
   }

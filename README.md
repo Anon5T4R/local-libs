@@ -50,6 +50,12 @@ vendorizada, ex. `craft-platform`) numa crate publicável reprova o `cargo-deny`
 `deny.toml` não isenta a crate — o `cargo check`/clippy/testes locais não pegam; rode `cargo deny check bans`
 num app antes do push.
 
+## Assets
+
+| Asset | Origem | O que é |
+|---|---|---|
+| `assets/craft-fonts` | unificação 2026-11-19 (a versão mais nova, que estava no molde; antes havia quatro versões entre os apps e dois apps baixavam do upstream no CI) | as fontes vendored da suíte (CJK, árabe, latinas extras): build input `CRAFT_FONTS_DIR`, que cada app aponta para `assets/craft-fonts` no `.cargo/config.toml`. Espelho em `<app>/assets/craft-fonts`: `sync.ps1 -Asset craft-fonts`. |
+
 ## Fluxo de mudança
 
 1. Edite **aqui** e rode `sync.ps1 -Mode push`.
