@@ -11,5 +11,11 @@ publish = false
 [lints]
 workspace = true
 
-# No dependencies: the SVG bytes go into the app's own `craft_ui::icons::SvgIconSet` (or loader), so the crate
-# never follows a particular egui fork.
+[features]
+# `ui::image` / `ui::button`: the icon tinted with the text colour, through the app's egui fork. The app installs
+# the SVG loader (`egui_extras::install_image_loaders`, feature `svg`) once at start.
+egui = ["dep:egui"]
+
+[dependencies]
+# Only with the `egui` feature: the bare tables need nothing.
+egui = { workspace = true, optional = true }

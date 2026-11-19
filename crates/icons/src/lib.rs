@@ -4,7 +4,11 @@
 //!
 //! Usage: merge [`ALL`] into the app's catalog (`craft_ui::icons::SvgIconSet::new` takes the same
 //! `(name, bytes)` shape) and ask for icons through [`Icon::name`], never a string literal. The SVGs use
-//! `currentColor` and `stroke-width="2"`, the conventions `SvgStyle` rewrites.
+//! `currentColor` and `stroke-width="2"`, the conventions `SvgStyle` rewrites. Apps without a catalog of
+//! their own use the `egui` feature ([`ui`]).
+
+#[cfg(feature = "egui")]
+pub mod ui;
 
 /// A shared concept. The name it maps to is the Lucide file name and the catalog key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -134,6 +138,67 @@ impl Icon {
     pub fn svg(self) -> &'static [u8] {
         let name = self.name();
         ALL.iter().find(|(n, _)| *n == name).map_or(&[], |(_, bytes)| bytes)
+    }
+}
+
+/// The suite's three themes, in the order the theme button cycles them (the Local PDF reference).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ThemeMode {
+    /// Follow the operating system.
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl ThemeMode {
+    pub const EVERY: [Self; 3] = [Self::System, Self::Light, Self::Dark];
+
+    /// The next mode the button switches to.
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::System => Self::Light,
+            Self::Light => Self::Dark,
+            Self::Dark => Self::System,
+        }
+    }
+
+    /// The icon that shows this mode.
+    #[must_use]
+    pub const fn icon(self) -> Icon {
+        match self {
+            Self::System => Icon::ThemeSystem,
+            Self::Light => Icon::ThemeLight,
+            Self::Dark => Icon::ThemeDark,
+        }
+    }
+
+    /// The id a preferences file keeps.
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+
+    /// The mode a preferences file names; an unknown id follows the system (a newer build's value must not
+    /// keep the app from opening).
+    #[must_use]
+    pub fn from_id(id: &str) -> Self {
+        Self::EVERY.into_iter().find(|mode| mode.id() == id).unwrap_or_default()
+    }
+
+    /// The English label the app's catalog translates (menus, Settings, the button's tooltip).
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::System => "Automatic",
+            Self::Light => "Light",
+            Self::Dark => "Dark",
+        }
     }
 }
 

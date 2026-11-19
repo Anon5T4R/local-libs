@@ -28,3 +28,16 @@ fn svgs_follow_the_tinting_conventions() {
         assert!(!svg.contains("<script"), "{name}: script in an embedded SVG");
     }
 }
+
+#[test]
+fn the_theme_cycles_through_all_three_and_round_trips_its_id() {
+    use super::ThemeMode;
+    let mut mode = ThemeMode::default();
+    assert_eq!(mode, ThemeMode::System);
+    for _ in 0..3 {
+        assert_eq!(ThemeMode::from_id(mode.id()), mode);
+        mode = mode.next();
+    }
+    assert_eq!(mode, ThemeMode::System);
+    assert_eq!(ThemeMode::from_id("nao-existe"), ThemeMode::System);
+}
