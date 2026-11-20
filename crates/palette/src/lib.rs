@@ -173,6 +173,8 @@ impl Palette {
 fn command_row(ui: &mut egui::Ui, command: &Command, selected: bool) -> egui::Response {
     let height = ui.spacing().interact_size.y.max(22.0);
     let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::click());
+    // The row is painted, so it says what it is: screen readers (and the tests) read the command's name.
+    response.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::ListBoxOption, command.enabled, selected, &command.label));
     if ui.is_rect_visible(rect) {
         let visuals = ui.visuals();
         if selected {
