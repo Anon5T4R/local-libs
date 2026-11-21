@@ -82,6 +82,12 @@ foreach ($app in $Apps) {
   if (-not (Test-Path $dst)) { Write-Warning "$app : destino ausente ($dst)"; $fail++; continue }
   if ($Mode -eq 'push' -and (Get-DirHash $dst) -ne $srcHash) {
     robocopy $src $dst /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+    # robocopy: 0-7 = sucesso (com ou sem copia), 8+ = falha.
+    if ($LASTEXITCODE -ge 8) { throw "$app : robocopy falhou (codigo $LASTEXITCODE)" }
+    # O robocopy preserva a data da fonte. Se ela for mais velha que o ultimo build do app, o cargo
+    # acha a crate "fresh" e roda o codigo antigo. Data de agora em tudo que foi espelhado.
+    $now = Get-Date
+    Get-ChildItem $dst -Recurse -File | ForEach-Object { $_.LastWriteTime = $now }
   }
   $ok = (Get-DirHash $dst) -eq $srcHash
   Write-Host ("{0} : {1}" -f $app, $(if ($ok) { 'OK' } else { 'DIVERGE' }))
