@@ -1,0 +1,136 @@
+//! Which app an installer or an update works on.
+
+/// A Craft App, as its releases and installers know it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct App {
+    /// Machine name: repo, binary, package and asset stem (`photocraft`).
+    pub id: &'static str,
+    /// Display name (`PhotoCraft`).
+    pub name: &'static str,
+    /// What it's for, in a few words (English). Written into the menu entries installers add.
+    pub tagline: &'static str,
+    /// GitHub `owner/repo`. Releases are only ever downloaded from this repository (or a former one).
+    pub repo: &'static str,
+    /// Earlier `owner/repo` names of the repository (a rename or a move to another owner). GitHub
+    /// redirects them, but the releases then list downloads under the current name, and a copy
+    /// installed before the rename knows only the old one: each is queried when the current
+    /// repository has no releases, and its downloads are accepted like the current repository's.
+    pub former_repos: &'static [&'static str],
+    /// Older names its release assets may carry (PdfCraft shipped as PrintCraft until 0.2.1).
+    pub former_ids: &'static [&'static str],
+    /// Older display names its installers registered (PdfCraft's MSI said PrintCraft until 0.2.1).
+    pub former_names: &'static [&'static str],
+    /// Its 128 px PNG icon: the update prompt's header and the menu entry written beside an
+    /// AppImage. `None`: the prompt shows the app's initial instead.
+    pub icon_png: Option<&'static [u8]>,
+    /// Its accent colour (sRGB), for the update prompt's buttons and highlights: the app's brand
+    /// colour, as ArtCraft Launcher shows it. `None`: the default blue.
+    pub accent: Option<[u8; 3]>,
+    /// Who makes it, shown as "by <developer>" in the update prompt. [`DEVELOPER`] unless the app
+    /// says otherwise.
+    pub developer: &'static str,
+    /// Who its Windows Installer packages name as their publisher (`Manufacturer` in the app's
+    /// WiX, the `Publisher` of its uninstall entry). [`UPSTREAM_PUBLISHER`] unless the suite
+    /// entry overrides it: a rebranded app publishes under its own name.
+    pub publisher: &'static str,
+}
+
+/// The developer of every app in the Local suite.
+pub const DEVELOPER: &str = "Anon5T4R";
+
+/// Who the upstream suite's Windows Installer packages name as their publisher.
+pub const UPSTREAM_PUBLISHER: &str = "Learning Machines LLC";
+
+impl App {
+    /// An app with no former names or repositories and no icon.
+    pub const fn new(id: &'static str, name: &'static str, tagline: &'static str, repo: &'static str) -> Self {
+        Self {
+            id,
+            name,
+            tagline,
+            repo,
+            former_repos: &[],
+            former_ids: &[],
+            former_names: &[],
+            icon_png: None,
+            accent: None,
+            developer: DEVELOPER,
+            publisher: UPSTREAM_PUBLISHER,
+        }
+    }
+
+    /// `ai.storyteller.<id>`: macOS bundle id, Flatpak id and Linux desktop-file id.
+    /// The suite's own apps use their packaging ids instead — the forks' installers, desktop
+    /// entries and metainfo all use them, and macOS self-update detection must match what
+    /// `Info.plist` carries.
+    pub fn bundle_id(&self) -> String {
+        match self.id {
+            // The renamed apps (Local Paint -> Raster, Local Obsidian -> Notebook) keep the packaging id
+            // they shipped with, so an installed copy is still the same app to the system.
+            "localpaint" | "localraster" => "com.localpaint.app".into(),
+            "localphoto" => "com.localphoto.app".into(),
+            "localobsidian" | "localnotebook" => "com.localobsidian.app".into(),
+            "localmind" => "com.localmind.app".into(),
+            _ => format!("ai.storyteller.{}", self.id),
+        }
+    }
+
+    pub fn releases_url(&self) -> String {
+        format!("https://github.com/{}/releases", self.repo)
+    }
+
+    pub fn repo_url(&self) -> String {
+        format!("https://github.com/{}", self.repo)
+    }
+
+    /// The app's page on getartcraft.com.
+    pub fn website(&self) -> String {
+        format!("https://getartcraft.com/apps/{}", self.id)
+    }
+
+    /// Asset stems this app's releases may use, current first.
+    pub fn stems(&self) -> impl Iterator<Item = &'static str> + '_ {
+        std::iter::once(self.id).chain(self.former_ids.iter().copied())
+    }
+
+    /// Display names this app's installers may have registered, current first.
+    pub fn names(&self) -> impl Iterator<Item = &'static str> + '_ {
+        std::iter::once(self.name).chain(self.former_names.iter().copied())
+    }
+
+    /// Looks up an app in the Craft App Suite catalog by its id.
+    pub fn by_id(id: &str) -> Option<&'static App> {
+        crate::suite::by_id(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn former_names_follow_the_current_one() {
+        let pdf =
+            App { former_ids: &["printcraft"], former_names: &["PrintCraft"], ..App::new("pdfcraft", "PdfCraft", "PDFs", "storytold/pdfcraft") };
+        assert_eq!(pdf.stems().collect::<Vec<_>>(), ["pdfcraft", "printcraft"]);
+        assert_eq!(pdf.names().collect::<Vec<_>>(), ["PdfCraft", "PrintCraft"]);
+        assert_eq!(pdf.bundle_id(), "ai.storyteller.pdfcraft");
+        assert_eq!(pdf.releases_url(), "https://github.com/storytold/pdfcraft/releases");
+    }
+
+    #[test]
+    fn the_suites_own_apps_use_their_packaging_bundle_ids() {
+        for (id, bundle) in [
+            ("localpaint", "com.localpaint.app"),
+            ("localraster", "com.localpaint.app"),
+            ("localphoto", "com.localphoto.app"),
+            ("localobsidian", "com.localobsidian.app"),
+            ("localnotebook", "com.localobsidian.app"),
+            ("localmind", "com.localmind.app"),
+        ] {
+            let app = App::new(id, id, "", "");
+            assert_eq!(app.bundle_id(), bundle);
+        }
+        assert_eq!(App::new("localsheets", "Local Sheets", "", "").bundle_id(), "ai.storyteller.localsheets");
+    }
+}
